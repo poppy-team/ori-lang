@@ -152,7 +152,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         end
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
-        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, io_alias)
+        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, io_alias, parsed_file.func_names, parsed_file.func_ret_tys, parsed_file.func_param_counts)
         if not body_supported
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")

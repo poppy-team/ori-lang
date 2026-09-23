@@ -41,6 +41,14 @@ started: 2026-09-07
 > revisão seguinte isola a checagem de retorno por função, antes de ampliar
 > o frontend e a bridge para chamadas, controle de fluxo e imports transitivos.
 
+> Execução 35903699883: stage1 passou no CI os programas `hello`, aritmética,
+> duas funções e precedência de `ori.io`, além de rejeitar IR incompleta; a
+> emissão do próprio compilador ainda parou em `bridge.unsupported_ir`. Os
+> testes nativos de igualdade de coleções falharam em macOS e Windows GNU;
+> Linux GNU e Windows MSVC passaram. A próxima fatia valida chamadas locais
+> sem parâmetros com retorno `int` do frontend até o objeto nativo. Os demais
+> tipos, parâmetros, fluxo de controle e imports transitivos seguem pendentes.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

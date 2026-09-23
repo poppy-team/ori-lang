@@ -149,6 +149,37 @@ echo 'Stage 0/1: compile a second function with its own return type'
 "$work/two-functions-stage0"
 "$work/two-functions-stage1"
 
+# Calls to a function declared later in the same module need its exact
+# signature on both sides of the bridge. The exit code stays zero only when
+# the function is actually called and its integer result reaches the caller.
+cat > "$work/local-call.orl" <<'ORI'
+module bootstrap.local_call
+main() -> int
+    const value = answer()
+    return value - 42
+end
+answer() -> int
+    return 42
+end
+ORI
+echo 'Stage 0/1: forward call to a local integer function'
+"$stage0" compile "$work/local-call.orl" -o "$work/local-call-stage0"
+"$work/ori-stage1" compile "$work/local-call.orl" -o "$work/local-call-stage1"
+"$work/local-call-stage0"
+"$work/local-call-stage1"
+python3 - "$work/local-call-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    module = json.load(request_file)["module"]
+assert [f["name"] for f in module["funcs"]] == ["main", "answer"]
+assert module["funcs"][0]["body_stmts"][0]["Let"]["value"] == {
+    "Call": {"callee": "answer", "args": []}
+}
+assert module["funcs"][1]["return_ty"] == "Int"
+PY
+
 # The imported namespace remains a module even when a local binding has the
 # same spelling. Compare the actual output against the reference compiler.
 cat > "$work/shadowed-io.orl" <<'ORI'
@@ -228,8 +259,31 @@ module bootstrap.missing_end
 main()
     const value = 42
 ORI
+cat > "$work/unknown-call.orl" <<'ORI'
+module bootstrap.unknown_call
+main() -> int
+    return nowhere()
+end
+ORI
+cat > "$work/wrong-call-arity.orl" <<'ORI'
+module bootstrap.wrong_call_arity
+main() -> int
+    return answer(3)
+end
+answer() -> int
+    return 42
+end
+ORI
+cat > "$work/wrong-call-return.orl" <<'ORI'
+module bootstrap.wrong_call_return
+main() -> int
+    return no_value()
+end
+no_value()
+end
+ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end; do
+for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity wrong-call-return; do
     assert_unsupported "$name"
 done
 

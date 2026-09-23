@@ -7,7 +7,7 @@ import selfhost.compiler.frontend.parse.parse_stmt as stmts
 
 -- The v1 bridge currently gives every variable and arithmetic expression the
 -- type Int. Validate its actual supported subset before serializing anything.
-public can_emit_int_expr(pool: exprs.ExprPool, id: int) -> bool
+public can_emit_int_expr(pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
     end
@@ -20,7 +20,17 @@ public can_emit_int_expr(pool: exprs.ExprPool, id: int) -> bool
         if op != "+" and op != "-" and op != "*" and op != "/"
             return false
         end
-        return can_emit_int_expr(pool, lists.get(pool.left_ids, id)) and can_emit_int_expr(pool, lists.get(pool.right_ids, id))
+        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 6 and lists.get(pool.left_ids, id) == -1
+        const callee = lists.get(pool.str_vals, id)
+        var i = 0
+        while i < lists.len(func_names)
+            if callee != "main" and callee != "println" and callee == lists.get(func_names, i)
+                return lists.get(func_ret_tys, i) == "int" and lists.get(func_param_counts, i) == 0
+            end
+            i = i + 1
+        end
     end
     return false
 end
@@ -43,7 +53,7 @@ public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string) -> bool
     return arg_id >= 0 and arg_id < lists.len(pool.kind_tags) and lists.get(pool.kind_tags, arg_id) == 2
 end
 
-public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string) -> bool
+public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
         return false
     end
@@ -55,11 +65,11 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
             if tag == 2 and ret_ty != "int"
                 return false
             end
-            if not can_emit_int_expr(pool, expr_id)
+            if not can_emit_int_expr(pool, expr_id, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id)
+            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         else
