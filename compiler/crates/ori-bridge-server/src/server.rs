@@ -270,17 +270,20 @@ fn validate_expr(
         }
         SerializedExpr::Add(l, r) => validate_int_pair(l, r, locals),
         SerializedExpr::Binary { op, left, right } => {
-            if !matches!(
+            validate_int_pair(left, right, locals)?;
+            if matches!(
                 op,
-                SerializedBinaryOp::Add
-                    | SerializedBinaryOp::Sub
-                    | SerializedBinaryOp::Mul
-                    | SerializedBinaryOp::Div
-                    | SerializedBinaryOp::Mod
+                SerializedBinaryOp::Eq
+                    | SerializedBinaryOp::Ne
+                    | SerializedBinaryOp::Lt
+                    | SerializedBinaryOp::Le
+                    | SerializedBinaryOp::Gt
+                    | SerializedBinaryOp::Ge
             ) {
-                return Err("comparison operations require typed bool lowering".to_string());
+                Ok(SerializedTy::Bool)
+            } else {
+                Ok(SerializedTy::Int)
             }
-            validate_int_pair(left, right, locals)
         }
         SerializedExpr::IntLit(_) => Ok(SerializedTy::Int),
         SerializedExpr::StrLit(_) => Ok(SerializedTy::String),
@@ -452,7 +455,19 @@ fn lower_expr(se: &SerializedExpr) -> HirExpr {
                 lhs: Box::new(lower_expr(left)),
                 rhs: Box::new(lower_expr(right)),
             },
-            ty: Ty::Int,
+            ty: if matches!(
+                op,
+                SerializedBinaryOp::Eq
+                    | SerializedBinaryOp::Ne
+                    | SerializedBinaryOp::Lt
+                    | SerializedBinaryOp::Le
+                    | SerializedBinaryOp::Gt
+                    | SerializedBinaryOp::Ge
+            ) {
+                Ty::Bool
+            } else {
+                Ty::Int
+            },
             span: Span::DUMMY,
         },
         SerializedExpr::Call { callee, args } => {

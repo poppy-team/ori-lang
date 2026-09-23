@@ -184,9 +184,9 @@ zero or one string literal. Calls requiring an unknown function signature are
 rejected with `bridge.unsupported_ir` before an object is emitted. No other
 call signature should be inferred as a zero-argument C extern.
 The bridge additionally validates local integer bindings, return types,
-integer arithmetic and Boolean `if` conditions. Comparison operations,
-undefined variables and non-integer variable use are rejected until typed
-lowering exists. The Ori client declines object emission when functions have
+integer arithmetic, comparisons between integers (producing `Bool`),
+and Boolean `if` conditions. Undefined variables and non-integer variable use
+are rejected until typed lowering exists. The Ori client declines object emission when functions have
 parameters, unsupported return types or statements absent from its emitter.
 
 The existing `--request-file` path does not enforce the proposed 30-second

@@ -1,4 +1,6 @@
 use ori_bridge_server::{
+    CompileModuleRequest, SerializedBinaryOp, SerializedExpr, SerializedFunc, SerializedModule,
+    SerializedStmt, SerializedTy,
     read_frame, write_frame, BridgeServer, HandshakeRequest, RequestEnvelope, CURRENT_PROTOCOL_VERSION,
 };
 use std::io::Cursor;
@@ -54,4 +56,41 @@ fn test_bridge_rejects_incompatible_protocol_version() {
     assert_eq!(res.status, "error");
     let err = res.error.expect("expected error payload");
     assert_eq!(err.code, "bridge.unsupported_version");
+}
+
+#[test]
+fn integer_comparison_lowers_to_a_boolean_if_condition() {
+    let dir = tempfile::tempdir().unwrap();
+    let obj = dir.path().join("comparison.o");
+    let req = RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION,
+        request_id: 1003,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module: SerializedModule {
+                namespace: String::new(),
+                funcs: vec![SerializedFunc {
+                    name: "main".to_string(),
+                    params: vec![],
+                    return_ty: SerializedTy::Void,
+                    body_stmts: vec![SerializedStmt::If {
+                        cond: SerializedExpr::Binary {
+                            op: SerializedBinaryOp::Lt,
+                            left: Box::new(SerializedExpr::IntLit(2)),
+                            right: Box::new(SerializedExpr::IntLit(3)),
+                        },
+                        then_stmts: vec![SerializedStmt::Return(None)],
+                        else_stmts: vec![SerializedStmt::Return(None)],
+                    }],
+                    is_public: true,
+                }],
+            },
+            output_path: obj.to_string_lossy().into_owned(),
+            lib_mode: false,
+        })
+        .unwrap(),
+    };
+    let res = BridgeServer::new().handle_request(req);
+    assert_eq!(res.status, "ok", "{:?}", res.error);
+    assert!(obj.exists());
 }
