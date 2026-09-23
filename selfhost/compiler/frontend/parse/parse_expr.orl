@@ -143,17 +143,16 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
 end
 
 parse_call(tokens: list[tok.Token], cursor: int, pool: ExprPool, fn_name: string, span: tok.Span) -> optional[ParseExprOut]
-    -- Preserve the callee while parsing arguments, which can allocate and
-    -- release the token carrying the original name.
-    const owned_fn_name = fn_name + ""
+    -- The pool owns the callee before nested arguments can release its token.
+    const call_id = alloc_expr_raw(pool, 6, -1, -1, fn_name)
     var cur = cursor + 2 -- Skip ident and '('
     var first_arg_id = -1
     while cur < lists.len(tokens)
         const t = lists.get(tokens, cur)
         match t.kind
         case RParen:
-            const id = alloc_expr_raw(pool, 6, first_arg_id, -1, owned_fn_name)
-            return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
+            lists.set(pool.left_ids, call_id, first_arg_id)
+            return some(ParseExprOut { expr_id: call_id, next_cursor: cur + 1 })
         case Comma:
             cur = cur + 1
         case else:

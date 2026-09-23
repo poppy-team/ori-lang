@@ -29,14 +29,15 @@ public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.Exp
                 const field_tok = lists.get(tokens, cur + 1)
                 match field_tok.kind
                 case Ident(name):
-                    -- Own the token payload before parsing arguments allocates
-                    -- more expressions and can release the borrowed token.
-                    const m_name = name + ""
+                    const m_name = name
                     -- Check for method call with args: .println("...")
                     if cur + 2 < lists.len(tokens)
                         const after_field = lists.get(tokens, cur + 2)
                         match after_field.kind
                         case LParen:
+                            -- Store the callee while its token is still live.
+                            -- The expression pool owns it across argument parsing.
+                            const next_id = exprs.alloc_expr_raw(pool, 6, -1, -1, m_name)
                             var first_arg_id = -1
                             var a_cur = cur + 3
                             -- Parse first argument if not immediately ')'
@@ -63,7 +64,7 @@ public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.Exp
                                     end
                                 end
                             end
-                            const next_id = exprs.alloc_expr_raw(pool, 6, first_arg_id, -1, m_name)
+                            lists.set(pool.left_ids, next_id, first_arg_id)
                             current = next_id
                             cur = a_cur
                         case else:
