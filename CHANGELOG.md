@@ -12,6 +12,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- The experimental frontend checks return types within each function's own
+  statement range. A later function no longer inherits the entry function's
+  return type; the bootstrap gate covers both valid and invalid signatures.
 - The experimental Stage 1 now keeps `->` return signatures and binary
   operators and method receivers in its bridge payload. Unsupported interpolation,
   call arguments, declarations and unparsed function tokens cause compilation to fail instead

@@ -189,7 +189,8 @@ and Boolean `if` conditions. Undefined variables and non-integer variable use
 are rejected until typed lowering exists. The Ori client declines object emission when functions have
 parameters, unsupported return types or statements absent from its emitter.
 The client preserves the operator in integer `+`, `-`, `*`, and `/` expressions
-and recognizes `-> int` return signatures. It must refuse code generation for
+and recognizes `-> int` return signatures. The limited type check evaluates
+return expressions against each function's own signature. It must refuse code generation for
 source it cannot represent: interpolated strings, floats, multiple call
 arguments, non-IO method calls, unknown body tokens, user-defined type declarations, top-level
 constants, and incomplete function bodies. A `check` result does not imply

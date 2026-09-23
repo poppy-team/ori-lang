@@ -104,6 +104,51 @@ assert function["body_stmts"][0]["Let"]["value"]["Binary"]["op"] == "Mul", funct
 assert function["body_stmts"][1]["Return"]["Binary"]["op"] == "Sub", function
 PY
 
+# Each function has its own return signature; the old checker reused the
+# return type of the first function for every statement in the source file.
+cat > "$work/return-scope-ok.orl" <<'ORI'
+module bootstrap.return_scope_ok
+main() -> int
+    return 0
+end
+is_ready() -> bool
+    return true
+end
+ORI
+cat > "$work/return-scope-bad.orl" <<'ORI'
+module bootstrap.return_scope_bad
+main() -> int
+    return 0
+end
+is_ready() -> bool
+    return 42
+end
+ORI
+echo 'Stage 1: check return types per function'
+"$work/ori-stage1" check "$work/return-scope-ok.orl"
+if "$work/ori-stage1" check "$work/return-scope-bad.orl" > "$work/return-scope-bad.log" 2>&1; then
+    echo 'Stage 1 accepted a mismatched return in a second function' >&2
+    exit 1
+fi
+grep -q 'type.return_mismatch' "$work/return-scope-bad.log" || {
+    cat "$work/return-scope-bad.log" >&2
+    exit 1
+}
+
+cat > "$work/two-functions.orl" <<'ORI'
+module bootstrap.two_functions
+main()
+end
+answer() -> int
+    return 42
+end
+ORI
+echo 'Stage 0/1: compile a second function with its own return type'
+"$stage0" compile "$work/two-functions.orl" -o "$work/two-functions-stage0"
+"$work/ori-stage1" compile "$work/two-functions.orl" -o "$work/two-functions-stage1"
+"$work/two-functions-stage0"
+"$work/two-functions-stage1"
+
 # Every source construct that the flat IR cannot express must fail before
 # invoking the bridge; otherwise a successful binary could change semantics.
 assert_unsupported() {

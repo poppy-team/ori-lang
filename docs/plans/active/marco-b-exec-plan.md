@@ -34,6 +34,13 @@ started: 2026-09-07
 > recusar tokens e construções que o IR plano não codifica. Só uma execução
 > nova do gate pode promover essa revisão a comportamento verificado no CI.
 
+> Execução 35902135131: stage1 compilou e executou `hello` e um programa
+> aritmético com retorno `Int`, `Mul` e `Sub` conferidos no payload da bridge;
+> seis negativas de IR incompleta foram recusadas. Stage1 analisou seu
+> `main.orl` mas ainda recusou a emissão com `bridge.unsupported_ir`. A
+> revisão seguinte isola a checagem de retorno por função, antes de ampliar
+> o frontend e a bridge para chamadas, controle de fluxo e imports transitivos.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

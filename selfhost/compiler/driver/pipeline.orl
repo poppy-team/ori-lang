@@ -80,7 +80,6 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const sym_count = dm.total_defs(dmap)
 
     -- 4. Type Checker: check all statements and return matching against declared signature
-    const checker_env = te.new_env()
     const sp_check = stmts.StmtPool {
         kind_tags: parsed_file.stmt_kind_tags,
         expr_ids: parsed_file.stmt_expr_ids,
@@ -92,9 +91,18 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         right_ids: parsed_file.expr_right_ids,
         str_vals: parsed_file.expr_str_vals
     }
-    const target_ret_ty = if lists.len(parsed_file.func_ret_tys) > 0 then lists.get(parsed_file.func_ret_tys, 0) else "void"
-    const type_err_total = te.check_function_statements(checker_env, sink, sp_check, exp_check, target_ret_ty)
-    io.println(f"TYPE_CHECK: defs={sym_count} env_bindings={te.binding_count(checker_env)} errors={type_err_total}")
+    var checked_functions = 0
+    var checked_bindings = 0
+    while checked_functions < lists.len(parsed_file.func_names)
+        const checker_env = te.new_env()
+        const first_stmt = lists.get(parsed_file.func_first_stmt_idx, checked_functions)
+        const last_stmt = lists.get(parsed_file.func_last_stmt_idx, checked_functions)
+        const target_ret_ty = lists.get(parsed_file.func_ret_tys, checked_functions)
+        te.check_function_statement_range(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty)
+        checked_bindings = checked_bindings + te.binding_count(checker_env)
+        checked_functions = checked_functions + 1
+    end
+    io.println(f"TYPE_CHECK: defs={sym_count} env_bindings={checked_bindings} errors={ds.error_count(sink)}")
     const total_errors = ds.error_count(sink)
     if total_errors > 0
         -- Do not lower or serialize an invalid program. Partial IR can contain

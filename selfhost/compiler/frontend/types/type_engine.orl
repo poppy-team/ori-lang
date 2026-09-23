@@ -118,10 +118,21 @@ public check_function_statements(
     pool: exprs.ExprPool,
     fn_ret_ty: string
 ) -> int
+    return check_function_statement_range(env, sink, sp, pool, 0, lists.len(sp.kind_tags), fn_ret_ty)
+end
+
+public check_function_statement_range(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    first_stmt: int,
+    last_stmt: int,
+    fn_ret_ty: string
+) -> int
     const expected_ret_tag = type_str_to_tag(fn_ret_ty)
-    var i = 0
-    const total = lists.len(sp.kind_tags)
-    while i < total
+    var i = first_stmt
+    while i < last_stmt
         check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag)
         i = i + 1
     end
