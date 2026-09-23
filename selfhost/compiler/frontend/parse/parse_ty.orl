@@ -49,6 +49,16 @@ public parse_type_ref(tokens: list[tok.Token], cursor: int, pool: TyPool) -> opt
         end
         const id = alloc_ty(pool, node.TyKind.Named(name: base_name), t.span)
         return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case List:
+        return parse_keyword_container(tokens, cursor, pool, "list")
+    case Set:
+        return parse_keyword_container(tokens, cursor, pool, "set")
+    case Map:
+        return parse_keyword_container(tokens, cursor, pool, "map")
+    case Optional:
+        return parse_keyword_container(tokens, cursor, pool, "optional")
+    case ResultKw:
+        return parse_keyword_container(tokens, cursor, pool, "result")
     case IntTy:
         const id = alloc_ty(pool, node.TyKind.Primitive(name: "int"), t.span)
         return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
@@ -64,6 +74,25 @@ public parse_type_ref(tokens: list[tok.Token], cursor: int, pool: TyPool) -> opt
     case Void:
         const id = alloc_ty(pool, node.TyKind.Primitive(name: "void"), t.span)
         return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case else:
+        return none
+    end
+end
+
+parse_keyword_container(
+    tokens: list[tok.Token],
+    cursor: int,
+    pool: TyPool,
+    base_name: string
+) -> optional[ParseTyOut]
+    if cursor + 1 >= lists.len(tokens)
+        return none
+    end
+    const open = lists.get(tokens, cursor + 1)
+    match open.kind
+    case LBracket:
+        const t = lists.get(tokens, cursor)
+        return parse_bracketed_type(tokens, cursor + 2, base_name, t.span, pool)
     case else:
         return none
     end
