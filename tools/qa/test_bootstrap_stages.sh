@@ -31,6 +31,18 @@ ORI
 echo 'Stage 1: local binding smoke check'
 "$work/ori-stage1" check "$work/locals.orl"
 
+# Standard library namespaces can contain type keywords. Both the import and
+# the imported module header must keep the full dotted path.
+cat > "$work/keyword-import.orl" <<'ORI'
+module bootstrap.keyword_import
+import ori.list as lists
+import ori.string as strings
+main()
+end
+ORI
+echo 'Stage 1: keyword-named stdlib module imports'
+"$work/ori-stage1" check "$work/keyword-import.orl"
+
 # An unresolved module must fail the check instead of making its alias a
 # silently accepted name.
 cat > "$work/missing-import.orl" <<'ORI'

@@ -12,6 +12,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- The experimental Stage 1 parser now preserves keyword-named stdlib path
+  segments such as `ori.list` and `ori.string` in imports and module headers.
+  The bootstrap checks those imports before attempting self-compilation.
 - Stage 1 now exits with the driver result and reports bridge/link errors as
   failures. Bootstrap verification requires Stage 1 to build Stage 2 and
   Stage 2 to build Stage 3, then compares the built binaries. The bridge

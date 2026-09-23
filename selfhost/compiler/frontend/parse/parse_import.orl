@@ -14,6 +14,22 @@ public struct ModuleHeaderOut
     next_cursor: int
 end
 
+-- Built-in stdlib modules may have names that are also type keywords. The
+-- lexer classifies these as keywords, while a dotted module path still needs
+-- their source spelling in both imports and module declarations.
+path_segment(kind: tok.TokenKind) -> optional[string]
+    match kind
+    case Ident(name): return some(name)
+    case List: return some("list")
+    case Map: return some("map")
+    case Set: return some("set")
+    case StringTy: return some("string")
+    case BytesTy: return some("bytes")
+    case Range: return some("range")
+    case else: return none
+    end
+end
+
 public parse_module_header(tokens: list[tok.Token], cursor: int) -> optional[ModuleHeaderOut]
     if cursor + 1 >= lists.len(tokens)
         return none
@@ -23,9 +39,9 @@ public parse_module_header(tokens: list[tok.Token], cursor: int) -> optional[Mod
     match mod_tok.kind
     case Module:
         const path_tok = lists.get(tokens, cursor + 1)
-        match path_tok.kind
-        case Ident(name):
-            var full: string = name
+        match path_segment(path_tok.kind)
+        case some(first):
+            var full: string = first
             var p_cur = cursor + 2
             var scanning = true
             while scanning and p_cur + 1 < lists.len(tokens)
@@ -33,11 +49,11 @@ public parse_module_header(tokens: list[tok.Token], cursor: int) -> optional[Mod
                 match dot_tok.kind
                 case Dot:
                     const seg_tok = lists.get(tokens, p_cur + 1)
-                    match seg_tok.kind
-                    case Ident(name):
-                        full = full + "." + name
+                    match path_segment(seg_tok.kind)
+                    case some(segment):
+                        full = full + "." + segment
                         p_cur = p_cur + 2
-                    case else:
+                    case none:
                         scanning = false
                     end
                 case else:
@@ -45,7 +61,7 @@ public parse_module_header(tokens: list[tok.Token], cursor: int) -> optional[Mod
                 end
             end
             return some(ModuleHeaderOut { name: full, next_cursor: p_cur })
-        case else:
+        case none:
             return none
         end
     case else:
@@ -62,9 +78,9 @@ public parse_import_decl(tokens: list[tok.Token], cursor: int) -> optional[Parse
     match imp_tok.kind
     case Import:
         const path_tok = lists.get(tokens, cursor + 1)
-        match path_tok.kind
-        case Ident(name):
-            var full_path: string = name
+        match path_segment(path_tok.kind)
+        case some(first):
+            var full_path: string = first
             var path_cur = cursor + 2
             var scanning = true
             while scanning and path_cur + 1 < lists.len(tokens)
@@ -72,11 +88,11 @@ public parse_import_decl(tokens: list[tok.Token], cursor: int) -> optional[Parse
                 match dot_tok.kind
                 case Dot:
                     const seg_tok = lists.get(tokens, path_cur + 1)
-                    match seg_tok.kind
-                    case Ident(name):
-                        full_path = full_path + "." + name
+                    match path_segment(seg_tok.kind)
+                    case some(segment):
+                        full_path = full_path + "." + segment
                         path_cur = path_cur + 2
-                    case else:
+                    case none:
                         scanning = false
                     end
                 case else:
@@ -131,7 +147,7 @@ public parse_import_decl(tokens: list[tok.Token], cursor: int) -> optional[Parse
                 }
                 return some(ParseImportOut { import_node: imp, next_cursor: path_cur })
             end
-        case else:
+        case none:
             return none
         end
     case else:
