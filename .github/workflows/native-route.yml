@@ -352,4 +352,6 @@ jobs:
       - name: Stage runtime for native compilation
         run: sh tools/stage_native_runtime.sh --profile debug --skip-build
       - name: Verify real Stage 0 → Stage 1 → Stage 2 → Stage 3 and program output
+        env:
+          RUST_BACKTRACE: '1'
         run: bash tools/qa/test_bootstrap_stages.sh
