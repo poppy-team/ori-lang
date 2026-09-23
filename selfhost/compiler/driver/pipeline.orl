@@ -24,7 +24,6 @@ public struct PipelineResult
     symbol_count: int
     func_count: int
     error_count: int
-    sink: ds.DiagnosticSink
     payload_json: string
     codegen_supported: bool
     status: string
@@ -64,6 +63,23 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const target_ret_ty = if lists.len(parsed_file.func_ret_tys) > 0 then lists.get(parsed_file.func_ret_tys, 0) else "void"
     const type_err_total = te.check_function_statements(checker_env, sink, sp_check, exp_check, target_ret_ty)
     io.println(f"TYPE_CHECK: defs={sym_count} env_bindings={te.binding_count(checker_env)} errors={type_err_total}")
+    const total_errors = ds.error_count(sink)
+    if total_errors > 0
+        -- Do not lower or serialize an invalid program. Partial IR can contain
+        -- missing expressions and cannot be safely handed to the bridge.
+        render_sink_errors(sink)
+        return PipelineResult {
+            token_count: tok_len,
+            parsed_items: item_len,
+            expr_count: expr_len,
+            symbol_count: sym_count,
+            func_count: 0,
+            error_count: total_errors,
+            payload_json: "",
+            codegen_supported: false,
+            status: "type_error"
+        }
+    end
 
     -- 5. HIR Lowering (Lower all functions directly from SOA lists with real statements)
     const sp = stmts.StmtPool {
@@ -109,8 +125,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         expr_count: expr_len,
         symbol_count: sym_count,
         func_count: f_count,
-        error_count: type_err_total,
-        sink: sink,
+        error_count: total_errors,
         payload_json: bridge_json,
         codegen_supported: codegen_supported,
         status: "pipeline_success"
@@ -135,7 +150,6 @@ public dispatch(parsed: cli_args.CliArgs, content: string) -> int
     io.println(f"PIPELINE_RESULT: {res.status} tokens={res.token_count} items={res.parsed_items} exprs={res.expr_count} symbols={res.symbol_count} funcs={res.func_count} errors={res.error_count}")
 
     if res.error_count > 0
-        render_sink_errors(res.sink)
         io.println(f"{res.error_count} error(s) found")
         return 1
     end
