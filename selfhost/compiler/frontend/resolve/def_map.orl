@@ -134,7 +134,7 @@ public pass2_resolve_idents_only(
         if tag == 4 -- Ident / Var only
             const ref_name = lists.get(names, i)
             if ref_name == ""
-                ds.emit_error(sink, "parse.empty_identifier", "empty identifier in parsed expression", "fix the lexer or parser before emitting IR")
+                ds.emit_error(sink, "parse.unexpected_token", "empty identifier in parsed expression", "fix the lexer or parser before emitting IR")
             elif not is_builtin_or_primitive(ref_name)
                 match lookup_def_id(dmap, ref_name)
                 case some(_):

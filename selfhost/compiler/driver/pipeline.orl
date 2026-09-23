@@ -35,16 +35,19 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     -- 1. Lexer (Full source code scanned to tokens)
     const tokens = lex.tokenize_all(content)
     const tok_len = lists.len(tokens)
+    io.println(f"PIPELINE_LEXED: tokens={tok_len}")
 
     -- 2. Parser (Parse all declarations with real function bodies via file_parser)
     const parsed_file = fp.parse_entire_file(tokens)
     const item_len = parsed_file.item_count
     const expr_len = parsed_file.expr_count
+    io.println(f"PIPELINE_PARSED: items={item_len} expressions={expr_len}")
 
     -- 3. Resolver PASS-1 & PASS-2: register declarations (with visibility) and resolve true Ident references
     const dmap = dm.new_def_map()
     const sink = ds.new_sink()
     dm.pass1_collect_declarations_pub(dmap, sink, parsed_file.module_name, parsed_file.func_names, parsed_file.func_is_public, parsed_file.struct_names, parsed_file.struct_is_public, parsed_file.enum_names, parsed_file.enum_is_public)
+    io.println("PIPELINE_DECLARATIONS_COLLECTED")
     -- A module alias is in scope only when its source can be loaded and its
     -- declaration matches the import. Linking its definitions remains a
     -- separate, required compiler step.
@@ -60,18 +63,20 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
                 if header.name == path
                     dm.register_def(dmap, sink, alias_name, path, 10, false)
                 else
-                    ds.emit_error(sink, "project.import_module_mismatch", f"import {path} declares {header.name}", "use the module path declared by the imported file")
+                    ds.emit_error(sink, "project.namespace_file_mismatch", f"import {path} declares {header.name}", "use the module path declared by the imported file")
                 end
             case none:
-                ds.emit_error(sink, "project.import_missing_module", f"import {path} has no module declaration", "add a matching module declaration")
+                ds.emit_error(sink, "parse.module_missing", f"import {path} has no module declaration", "add a matching module declaration")
             end
         case err(message):
-            ds.emit_error(sink, "project.import_not_found", message, "check the imported module path")
+            ds.emit_error(sink, "bind.import_not_found", message, "check the imported module path")
         end
         import_idx = import_idx + 1
     end
+    io.println(f"PIPELINE_IMPORTS_VALIDATED: count={import_idx}")
     dm.register_local_bindings(dmap, parsed_file.stmt_target_names)
     dm.pass2_resolve_idents_only(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_str_vals)
+    io.println("PIPELINE_REFERENCES_RESOLVED")
     const sym_count = dm.total_defs(dmap)
 
     -- 4. Type Checker: check all statements and return matching against declared signature

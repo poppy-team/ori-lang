@@ -17,7 +17,7 @@ public load_module_text(module_path: string, base_dir: string) -> LoadResult
     case ok(content):
         return ok(content)
     case err(e):
-        return err(f"project.entry_not_found: {file_path} ({e})")
+        return err(f"import file {file_path} could not be read: {e}")
     end
 end
 

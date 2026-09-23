@@ -45,7 +45,7 @@ if "$work/ori-stage1" check "$work/missing-import.orl" > "$work/missing-import.l
     echo 'Stage 1 accepted a missing import' >&2
     exit 1
 fi
-if ! grep -q 'project.import_not_found' "$work/missing-import.log"; then
+if ! grep -q 'bind.import_not_found' "$work/missing-import.log"; then
     cat "$work/missing-import.log" >&2
     echo 'Stage 1 failed without diagnosing the missing import' >&2
     exit 1
