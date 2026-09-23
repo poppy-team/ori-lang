@@ -102,6 +102,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, checked_functions)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, checked_functions)
         const target_ret_ty = lists.get(parsed_file.func_ret_tys, checked_functions)
+        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_str_vals, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, first_stmt, last_stmt)
         te.check_function_statement_range(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty)
         checked_bindings = checked_bindings + te.binding_count(checker_env)
         checked_functions = checked_functions + 1

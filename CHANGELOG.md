@@ -17,6 +17,10 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   integer expressions. The bootstrap gate compares their native execution
   with Stage 0 and checks the serialized call; unsupported signatures and
   argument lists still fail before code generation.
+- Stage 1 checks local bindings against each function's statement scope;
+  a binding from a later statement or another function no longer passes
+  `check`. The bootstrap script forces a fresh Stage 0 compilation of all
+  self-hosted modules so an incremental cache cannot reuse an older Stage 1.
 - The experimental frontend checks return types within each function's own
   statement range. A later function no longer inherits the entry function's
   return type; the bootstrap gate covers both valid and invalid signatures.

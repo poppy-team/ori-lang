@@ -55,6 +55,11 @@ started: 2026-09-07
 > retinha as referências. A correção aplica a retenção às callbacks; a
 > confirmação depende da próxima execução multiplataforma do CI.
 
+> O frontend agora recusa uma variável local de outra função durante `check`
+> e `compile`; a emissão também valida os bindings visíveis até cada
+> statement. O gate compila stage1 com o cache incremental desativado para
+> garantir que mudanças nos módulos importados estejam no binário verificado.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

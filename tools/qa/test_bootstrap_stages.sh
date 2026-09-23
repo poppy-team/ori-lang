@@ -16,7 +16,10 @@ trap 'rm -rf "$work"' EXIT
 source_file="$repo/selfhost/compiler/main.orl"
 
 echo 'Stage 0 -> Stage 1'
-"$stage0" compile "$source_file" -o "$work/ori-stage1"
+# The Stage 0 incremental cache can reuse an older output when an imported
+# frontend module changes without touching main.orl. Bootstrap must compile
+# the checked-out source tree, including imported compiler modules.
+ORI_DISABLE_INCREMENTAL=1 "$stage0" compile "$source_file" -o "$work/ori-stage1"
 test -x "$work/ori-stage1" || { echo 'Stage 0 did not emit Stage 1' >&2; exit 1; }
 
 # Exercise inferred local bindings before attempting to compile the compiler.
@@ -282,9 +285,49 @@ end
 no_value()
 end
 ORI
+cat > "$work/cross-function-binding.orl" <<'ORI'
+module bootstrap.cross_function_binding
+main() -> int
+    return secret
+end
+helper() -> int
+    const secret = 42
+    return secret
+end
+ORI
+cat > "$work/early-use.orl" <<'ORI'
+module bootstrap.early_use
+main() -> int
+    const value = later
+    const later = 42
+    return value - 42
+end
+ORI
 echo 'Stage 1: unsupported source must fail closed'
 for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity wrong-call-return; do
     assert_unsupported "$name"
+done
+
+# A module-wide symbol table must not expose another function's local binding
+# to check or compile. The reference frontend reports name.undefined here.
+echo 'Stage 1: local bindings stay within their function and declaration order'
+for name in cross-function-binding early-use; do
+    if "$work/ori-stage1" check "$work/$name.orl" > "$work/$name.check.log" 2>&1; then
+        echo "Stage 1 accepted an out-of-scope binding: $name" >&2
+        exit 1
+    fi
+    grep -q 'name.undefined' "$work/$name.check.log" || {
+        cat "$work/$name.check.log" >&2
+        exit 1
+    }
+    if "$work/ori-stage1" compile "$work/$name.orl" -o "$work/$name.bin" > "$work/$name.compile.log" 2>&1; then
+        echo "Stage 1 compiled an out-of-scope binding: $name" >&2
+        exit 1
+    fi
+    grep -q 'name.undefined' "$work/$name.compile.log" || {
+        cat "$work/$name.compile.log" >&2
+        exit 1
+    }
 done
 
 echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'

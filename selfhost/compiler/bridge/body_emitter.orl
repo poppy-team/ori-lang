@@ -7,20 +7,31 @@ import selfhost.compiler.frontend.parse.parse_stmt as stmts
 
 -- The v1 bridge currently gives every variable and arithmetic expression the
 -- type Int. Validate its actual supported subset before serializing anything.
-public can_emit_int_expr(pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
     end
     const tag = lists.get(pool.kind_tags, id)
-    if tag == 1 or tag == 4
+    if tag == 1
         return true
+    end
+    if tag == 4
+        const name = lists.get(pool.str_vals, id)
+        var local_idx = 0
+        while local_idx < lists.len(local_names)
+            if name == lists.get(local_names, local_idx)
+                return true
+            end
+            local_idx = local_idx + 1
+        end
+        return false
     end
     if tag == 5
         const op = lists.get(pool.str_vals, id)
         if op != "+" and op != "-" and op != "*" and op != "/"
             return false
         end
-        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), func_names, func_ret_tys, func_param_counts)
+        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, func_names, func_ret_tys, func_param_counts)
     end
     if tag == 6 and lists.get(pool.left_ids, id) == -1
         const callee = lists.get(pool.str_vals, id)
@@ -57,6 +68,7 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
     if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
         return false
     end
+    const local_names: list[string] = []
     var i = start_idx
     while i < end_idx
         const tag = lists.get(sp.kind_tags, i)
@@ -65,11 +77,22 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
             if tag == 2 and ret_ty != "int"
                 return false
             end
-            if not can_emit_int_expr(pool, expr_id, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
+            if tag == 1
+                const target = lists.get(sp.target_names, i)
+                var j = 0
+                while j < lists.len(local_names)
+                    if target == lists.get(local_names, j)
+                        return false
+                    end
+                    j = j + 1
+                end
+                lists.push(local_names, target)
+            end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         else

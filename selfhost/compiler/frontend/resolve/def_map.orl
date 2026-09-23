@@ -147,6 +147,74 @@ public pass2_resolve_idents_only(
     end
 end
 
+-- The global definition map records local names for lookup, but a binding
+-- from another function (or a later statement) is not visible here. Traverse
+-- only expressions reached from statements in this function.
+check_scoped_expr(
+    dmap: DefMap,
+    sink: ds.DiagnosticSink,
+    kind_tags: list[int],
+    left_ids: list[int],
+    right_ids: list[int],
+    names: list[string],
+    expr_id: int,
+    visible_locals: list[string]
+)
+    if expr_id < 0 or expr_id >= lists.len(kind_tags)
+        return
+    end
+    const tag = lists.get(kind_tags, expr_id)
+    if tag == 4
+        const name = lists.get(names, expr_id)
+        match lookup_def_id(dmap, name)
+        case some(def_id):
+            if lists.get(dmap.kinds, def_id) == 6
+                var found = false
+                var local_idx = 0
+                while local_idx < lists.len(visible_locals)
+                    if name == lists.get(visible_locals, local_idx)
+                        found = true
+                    end
+                    local_idx = local_idx + 1
+                end
+                if not found
+                    ds.emit_error(sink, "name.undefined", "undefined identifier in this function: " + name, "declare the binding before use in the same function")
+                end
+            end
+        case none:
+        end
+    elif tag == 5
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, lists.get(left_ids, expr_id), visible_locals)
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, lists.get(right_ids, expr_id), visible_locals)
+    elif tag == 6
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, lists.get(left_ids, expr_id), visible_locals)
+    end
+end
+
+public check_function_scope(
+    dmap: DefMap,
+    sink: ds.DiagnosticSink,
+    expr_kinds: list[int],
+    expr_lefts: list[int],
+    expr_rights: list[int],
+    expr_names: list[string],
+    stmt_kinds: list[int],
+    stmt_exprs: list[int],
+    stmt_names: list[string],
+    first_stmt: int,
+    last_stmt: int
+)
+    const visible_locals: list[string] = []
+    var i = first_stmt
+    while i < last_stmt
+        check_scoped_expr(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, lists.get(stmt_exprs, i), visible_locals)
+        if lists.get(stmt_kinds, i) == 1
+            lists.push(visible_locals, lists.get(stmt_names, i))
+        end
+        i = i + 1
+    end
+end
+
 is_builtin_or_primitive(name: string) -> bool
     if name == "int" or name == "string" or name == "bool" or name == "float" or name == "void"
         return true
