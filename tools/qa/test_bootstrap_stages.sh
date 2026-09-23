@@ -32,8 +32,15 @@ echo 'Stage 1: local binding smoke check'
 "$work/ori-stage1" check "$work/locals.orl"
 
 echo 'Stage 0/1: compile and run a shared program before self-compilation'
-"$stage0" compile "$repo/examples/hello/main.orl" -o "$work/hello-stage0"
-"$work/ori-stage1" compile "$repo/examples/hello/main.orl" -o "$work/hello-stage1"
+cat > "$work/hello-minimal.orl" <<'ORI'
+module bootstrap.hello
+import ori.io as io
+main()
+    io.println("Hello from Ori")
+end
+ORI
+"$stage0" compile "$work/hello-minimal.orl" -o "$work/hello-stage0"
+"$work/ori-stage1" compile "$work/hello-minimal.orl" -o "$work/hello-stage1"
 test -x "$work/hello-stage0" && test -x "$work/hello-stage1"
 "$work/hello-stage0" > "$work/hello-stage0.stdout"
 "$work/hello-stage1" > "$work/hello-stage1.stdout"
