@@ -46,6 +46,12 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Collection equality/hash callbacks retain borrowed keys before calling Ori methods.**
+  Generated callbacks pass an owned reference for each managed method
+  parameter, matching the direct equality path. This avoids releasing a
+  map, set, or graph key while the collection still owns it. The native ABI
+  and runtime layouts are unchanged.
+
 - **Managed `ori.list.get` results keep their own reference.** A retrieved
   struct, enum, string or collection remains valid when the source list later
   removes or releases it. The native compiler retains the borrowed runtime

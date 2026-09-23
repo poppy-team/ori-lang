@@ -49,6 +49,12 @@ started: 2026-09-07
 > sem parâmetros com retorno `int` do frontend até o objeto nativo. Os demais
 > tipos, parâmetros, fluxo de controle e imports transitivos seguem pendentes.
 
+> Investigação das falhas nativas: callbacks de igualdade e hash recebiam
+> chaves emprestadas do runtime e as passavam sem retenção a métodos Ori que
+> consomem parâmetros gerenciados. O mesmo caminho de comparação direta já
+> retinha as referências. A correção aplica a retenção às callbacks; a
+> confirmação depende da próxima execução multiplataforma do CI.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

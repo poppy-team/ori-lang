@@ -7108,6 +7108,12 @@ impl<M: Module> NativeBackend<M> {
                 let fref = *func_refs
                     .get(method_name.as_str())
                     .ok_or_else(|| format!("missing Equatable implementation `{method_name}`"))?;
+                // The runtime passes borrowed collection keys to this callback.
+                // Ori methods consume their managed parameters, so transfer a
+                // fresh reference for each argument before invoking the method.
+                let value_ty = Ty::Named(def_id, vec![]);
+                codegen.emit_arc_retain_if_managed(&value_ty, left_ptr)?;
+                codegen.emit_arc_retain_if_managed(&value_ty, right_ptr)?;
                 let call = codegen.builder.ins().call(fref, &[left_ptr, right_ptr]);
                 codegen.builder.inst_results(call)[0]
             } else if matches!(target, EqualityHelperTarget::Struct)
@@ -7237,6 +7243,9 @@ impl<M: Module> NativeBackend<M> {
                 let fref = *func_refs
                     .get(method_name.as_str())
                     .ok_or_else(|| format!("missing Hashable implementation `{method_name}`"))?;
+                // Hash callbacks also receive a borrowed key from the runtime.
+                let value_ty = Ty::Named(def_id, vec![]);
+                codegen.emit_arc_retain_if_managed(&value_ty, value_ptr)?;
                 let call = codegen.builder.ins().call(fref, &[value_ptr]);
                 codegen.builder.inst_results(call)[0]
             } else if codegen
