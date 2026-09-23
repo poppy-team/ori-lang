@@ -28,6 +28,11 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Managed `ori.list.get` results keep their own reference.** A retrieved
+  struct, enum, string or collection remains valid when the source list later
+  removes or releases it. The native compiler retains the borrowed runtime
+  result before cleaning up temporary arguments; the native ABI is unchanged.
+
 - **Aggressive leaf inlining can materialize scalar argument temporaries.**
   Direct same-module calls used as the complete value of `Let`, `Return`, or
   `Expr` can bind every numeric/bool argument once in source order, including

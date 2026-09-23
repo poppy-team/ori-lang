@@ -868,6 +868,42 @@ end
 }
 
 // ── C1 — single cascade owner (dtor × edges overlap) ───────────────────────
+
+/// A list keeps its own reference to an element. `list.get` must acquire a
+/// separate reference for the returned value before the list drops its edge.
+#[test]
+fn compile_runs_native_list_get_keeps_removed_struct_alive() {
+    let dir = TestDir::new("list_get_removed_struct");
+    let (stdout, stderr, success) = compile_and_run(
+        &dir,
+        r#"module app.main
+
+import ori.io = io
+import ori.list = lists
+
+struct Entry
+    name: string
+end
+
+main()
+    const entries: list[Entry] = []
+    lists.push(entries, Entry { name: "retained" })
+    const fetched = lists.get(entries, 0)
+    lists.remove(entries, 0)
+    var i = 0
+    while i < 100
+        lists.push(entries, Entry { name: "unrelated" })
+        i = i + 1
+    end
+    io.println(fetched.name)
+end
+"#,
+        "list_get_removed_struct",
+    );
+    assert!(success, "stdout: {stdout}\nstderr: {stderr}");
+    assert_eq!(stdout.trim(), "retained");
+}
+
 // Regression tests from docs/planning/historico/nim-study-2026-07-17-c1.md.
 // Before the fix, composite owners released managed fields twice (generated
 // __dtor_* plus the registered ARC edge), so a child shared with a live

@@ -15547,17 +15547,24 @@ impl<'a> FuncCodegen<'a> {
                         }
                         if let Some(&fref) = self.func_refs.get(name.as_str()) {
                             let call = self.builder.ins().call(fref, &args_v);
+                            let result = self.builder.inst_results(call).first().copied();
+                            // `ori_list_get` borrows the element from its list.
+                            // A call expression hands an owned result to its
+                            // binding/caller, so acquire that reference before
+                            // releasing a temporary list argument. Otherwise a
+                            // later scope cleanup frees an element still in the
+                            // list (or reads it after the list is removed).
+                            if name.as_str() == "ori_list_get" {
+                                if let Some(value) = result {
+                                    self.emit_arc_retain_if_managed(&expr.ty, value)?;
+                                }
+                            }
                             // Release fresh managed temporaries passed to
                             // stdlib FFI after the call returns.
                             for (v, ty) in owned_temp_args {
                                 self.emit_arc_release_if_managed(&ty, v)?;
                             }
-                            let res = self.builder.inst_results(call);
-                            if res.is_empty() {
-                                self.builder.ins().iconst(types::I8, 0)
-                            } else {
-                                res[0]
-                            }
+                            result.unwrap_or_else(|| self.builder.ins().iconst(types::I8, 0))
                         } else {
                             return Err(format!(
                                 "missing function reference `{name}` in native codegen"

@@ -75,6 +75,9 @@ The compiler inserts retain/release calls at compile time based on lexical scope
 
 Rules:
 - A reference is retained when it is stored in a binding or passed to a function.
+- Reading a managed element from a collection produces a value that remains
+  valid after the collection removes that element. The collection's reference
+  and the returned value's reference have independent lifetimes.
 - A reference is released when the binding goes out of scope.
 - In the Rust runtime used by the native backend, retain/release use atomic
   reference counts.
