@@ -194,6 +194,14 @@ main()
     number.println("wrong")
 end
 ORI
+cat > "$work/shadowed-io.orl" <<'ORI'
+module bootstrap.shadowed_io
+import ori.io as io
+main()
+    const io = 4
+    io.println("wrong")
+end
+ORI
 cat > "$work/unknown-body.orl" <<'ORI'
 module bootstrap.unknown_body
 main()
@@ -206,7 +214,7 @@ main()
     const value = 42
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print unknown-body missing-end; do
+for name in interpolation multiple-arguments struct-declaration false-print shadowed-io unknown-body missing-end; do
     assert_unsupported "$name"
 done
 

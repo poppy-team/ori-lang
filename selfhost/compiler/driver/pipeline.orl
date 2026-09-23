@@ -52,9 +52,13 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     -- declaration matches the import. Linking its definitions remains a
     -- separate, required compiler step.
     var import_idx = 0
+    var io_alias = ""
     while import_idx < lists.len(parsed_file.import_paths)
         const path = lists.get(parsed_file.import_paths, import_idx)
         const alias_name = lists.get(parsed_file.import_aliases, import_idx)
+        if path == "ori.io" and alias_name == "io"
+            io_alias = alias_name
+        end
         match loader.load_module_text(path, ".")
         case ok(import_content):
             const imported_tokens = lex.tokenize_all(import_content)
@@ -148,7 +152,15 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         end
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
-        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret)
+        var effective_io_alias = io_alias
+        var local_idx = first_stmt
+        while local_idx < last_stmt
+            if io_alias != "" and lists.get(sp.target_names, local_idx) == io_alias
+                effective_io_alias = ""
+            end
+            local_idx = local_idx + 1
+        end
+        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, effective_io_alias)
         if not body_supported
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")

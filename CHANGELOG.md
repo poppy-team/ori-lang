@@ -19,7 +19,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   operators and method receivers in its bridge payload. Unsupported interpolation,
   call arguments, declarations and unparsed function tokens cause compilation to fail instead
   of emitting a program with silently omitted or substituted code. The
-  bootstrap gate checks the serialized operators and negative cases.
+  bootstrap gate checks the serialized operators and negative cases. Its
+  minimal print path requires `import ori.io as io` without a local binding
+  shadowing that alias.
 - The experimental Stage 1 parser now preserves keyword-named stdlib path
   segments such as `ori.list` and `ori.string` in imports and module headers.
   The bootstrap checks those imports before attempting self-compilation.
