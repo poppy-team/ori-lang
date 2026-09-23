@@ -1,7 +1,6 @@
 module selfhost.compiler.frontend.parse.func_body_parser
 
 import ori.list as lists
-import ori.io as io
 import selfhost.compiler.frontend.lex.token as tok
 import selfhost.compiler.frontend.parse.decl_and_recovery as dr
 import selfhost.compiler.frontend.parse.parse_expr as exprs
@@ -25,7 +24,6 @@ public parse_statements_until_end(
 
     -- Now parse each top-level statement in the function body slice
     while cur < body_end
-        io.println(f"PARSE_STATEMENT_CURSOR: {cur}")
         match stmts.parse_statement(tokens, cur, pool, sp)
         case some(out):
             lists.push(ids, out.stmt_id)
