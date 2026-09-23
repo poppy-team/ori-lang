@@ -145,6 +145,15 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
                 if expr_id >= 0 and expr_id < lists.len(exp_pool.kind_tags)
                     const expr_tag = lists.get(exp_pool.kind_tags, expr_id)
                     io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} expression={expr_tag}")
+                    if expr_tag == 6
+                        const callee = lists.get(exp_pool.str_vals, expr_id)
+                        const arg_id = lists.get(exp_pool.left_ids, expr_id)
+                        io.println(f"CODEGEN_CALL: callee={callee} arg={arg_id}")
+                        if arg_id >= 0 and arg_id < lists.len(exp_pool.kind_tags)
+                            const arg_tag = lists.get(exp_pool.kind_tags, arg_id)
+                            io.println(f"CODEGEN_CALL_ARGUMENT: tag={arg_tag}")
+                        end
+                    end
                 else
                     io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} invalid_expression={expr_id}")
                 end
