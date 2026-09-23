@@ -138,6 +138,21 @@ grep -q 'type.return_mismatch' "$work/return-scope-bad.log" || {
     exit 1
 }
 
+cat > "$work/return-scope-call-ok.orl" <<'ORI'
+module bootstrap.return_scope_call_ok
+main()
+end
+ready_again() -> bool
+    return is_ready()
+end
+is_ready() -> bool
+    return true
+end
+ORI
+echo 'Stage 0/1: valid forward boolean return types'
+"$stage0" check "$work/return-scope-call-ok.orl"
+"$work/ori-stage1" check "$work/return-scope-call-ok.orl"
+
 cat > "$work/two-functions.orl" <<'ORI'
 module bootstrap.two_functions
 main()
@@ -181,6 +196,39 @@ assert module["funcs"][0]["body_stmts"][0]["Let"]["value"] == {
     "Call": {"callee": "answer", "args": []}
 }
 assert module["funcs"][1]["return_ty"] == "Int"
+PY
+
+cat > "$work/boolean-call.orl" <<'ORI'
+module bootstrap.boolean_call
+import ori.io as io
+main()
+    ready_again()
+end
+ready_again() -> bool
+    return is_ready()
+end
+is_ready() -> bool
+    io.println("boolean call executed")
+    return 7 == 7
+end
+ORI
+echo 'Stage 0/1: forward boolean call and comparison'
+"$stage0" compile "$work/boolean-call.orl" -o "$work/boolean-call-stage0"
+"$work/ori-stage1" compile "$work/boolean-call.orl" -o "$work/boolean-call-stage1"
+"$work/boolean-call-stage0" > "$work/boolean-call-stage0.stdout"
+"$work/boolean-call-stage1" > "$work/boolean-call-stage1.stdout"
+cmp "$work/boolean-call-stage0.stdout" "$work/boolean-call-stage1.stdout"
+python3 - "$work/boolean-call-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert [f["return_ty"] for f in funcs] == ["Void", "Bool", "Bool"], funcs
+assert funcs[1]["body_stmts"][0]["Return"] == {
+    "Call": {"callee": "is_ready", "args": []}
+}, funcs
+assert funcs[2]["body_stmts"][1]["Return"]["Binary"]["op"] == "Eq", funcs
 PY
 
 # The imported namespace remains a module even when a local binding has the
@@ -285,6 +333,28 @@ end
 no_value()
 end
 ORI
+cat > "$work/mistyped-local.orl" <<'ORI'
+module bootstrap.mistyped_local
+main() -> int
+    const flag = true
+    return flag
+end
+ORI
+cat > "$work/mistyped-forward-call.orl" <<'ORI'
+module bootstrap.mistyped_forward_call
+main() -> int
+    return is_ready()
+end
+is_ready() -> bool
+    return true
+end
+ORI
+cat > "$work/mistyped-comparison.orl" <<'ORI'
+module bootstrap.mistyped_comparison
+main() -> int
+    return 7 == 7
+end
+ORI
 cat > "$work/cross-function-binding.orl" <<'ORI'
 module bootstrap.cross_function_binding
 main() -> int
@@ -304,8 +374,23 @@ main() -> int
 end
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity wrong-call-return; do
+for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity; do
     assert_unsupported "$name"
+done
+
+# Resolve local value types and forward function signatures when checking a
+# return. These programs were previously accepted because variables had an
+# unknown type and every call was guessed to return int.
+echo 'Stage 1: wrong return types from locals, calls, and comparisons'
+for name in wrong-call-return mistyped-local mistyped-forward-call mistyped-comparison; do
+    if "$work/ori-stage1" check "$work/$name.orl" > "$work/$name.check.log" 2>&1; then
+        echo "Stage 1 accepted a mismatched return: $name" >&2
+        exit 1
+    fi
+    grep -q 'type.return_mismatch' "$work/$name.check.log" || {
+        cat "$work/$name.check.log" >&2
+        exit 1
+    }
 done
 
 # A module-wide symbol table must not expose another function's local binding

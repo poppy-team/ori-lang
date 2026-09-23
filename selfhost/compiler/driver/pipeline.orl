@@ -103,7 +103,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, checked_functions)
         const target_ret_ty = lists.get(parsed_file.func_ret_tys, checked_functions)
         dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_str_vals, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, first_stmt, last_stmt)
-        te.check_function_statement_range(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty)
+        te.check_function_statement_range_in_module(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty, parsed_file.func_names, parsed_file.func_ret_tys)
         checked_bindings = checked_bindings + te.binding_count(checker_env)
         checked_functions = checked_functions + 1
     end
@@ -147,7 +147,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
         const param_count = lists.get(parsed_file.func_param_counts, k)
-        if param_count != 0 or (fn_ret != "int" and fn_ret != "void")
+        if param_count != 0 or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "void")
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_SIGNATURE: {fn_name} params={param_count} return={fn_ret}")
         end

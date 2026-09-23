@@ -34,13 +34,38 @@ public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string
         return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, func_names, func_ret_tys, func_param_counts)
     end
     if tag == 6 and lists.get(pool.left_ids, id) == -1
-        const callee = lists.get(pool.str_vals, id)
-        var i = 0
-        while i < lists.len(func_names)
-            if callee != "main" and callee != "println" and callee == lists.get(func_names, i)
-                return lists.get(func_ret_tys, i) == "int" and lists.get(func_param_counts, i) == 0
-            end
-            i = i + 1
+        return can_emit_local_call(pool, id, func_names, func_ret_tys, func_param_counts, "int")
+    end
+    return false
+end
+
+can_emit_local_call(pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], result_ty: string) -> bool
+    const callee = lists.get(pool.str_vals, id)
+    var i = 0
+    while i < lists.len(func_names)
+        if callee != "main" and callee != "println" and callee == lists.get(func_names, i)
+            return lists.get(func_ret_tys, i) == result_ty and lists.get(func_param_counts, i) == 0
+        end
+        i = i + 1
+    end
+    return false
+end
+
+public can_emit_bool_expr(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 3
+        return true
+    end
+    if tag == 6 and lists.get(pool.left_ids, id) == -1
+        return can_emit_local_call(pool, id, func_names, func_ret_tys, func_param_counts, "bool")
+    end
+    if tag == 5
+        const op = lists.get(pool.str_vals, id)
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">="
+            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, func_names, func_ret_tys, func_param_counts)
         end
     end
     return false
@@ -74,13 +99,10 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
         const tag = lists.get(sp.kind_tags, i)
         const expr_id = lists.get(sp.expr_ids, i)
         if tag == 1 or tag == 2
-            if tag == 2 and ret_ty != "int"
-                return false
-            end
-            if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
-                return false
-            end
             if tag == 1
+                if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
                 const target = lists.get(sp.target_names, i)
                 var j = 0
                 while j < lists.len(local_names)
@@ -90,9 +112,19 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
                     j = j + 1
                 end
                 lists.push(local_names, target)
+            elif ret_ty == "int"
+                if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif ret_ty == "bool"
+                if not can_emit_bool_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            else
+                return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         else

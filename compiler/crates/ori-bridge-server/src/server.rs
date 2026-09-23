@@ -165,7 +165,7 @@ impl BridgeServer {
 
 fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
     let mut funcs = Vec::new();
-    let callable = callable_int_functions(sm);
+    let callable = callable_functions(sm);
 
     for (i, f) in sm.funcs.iter().enumerate() {
         funcs.push(lower_func(f, &sm.namespace, DefId(i as u32 + 1), &callable));
@@ -183,9 +183,9 @@ fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
     }
 }
 
-// Protocol v1 can lower only calls with no arguments and an integer result.
+// Protocol v1 can lower calls with no arguments and a scalar result.
 // Build the signature table before visiting bodies so forward calls work.
-fn callable_int_functions(module: &SerializedModule) -> std::collections::HashSet<String> {
+fn callable_functions(module: &SerializedModule) -> HashMap<String, SerializedTy> {
     module
         .funcs
         .iter()
@@ -193,9 +193,9 @@ fn callable_int_functions(module: &SerializedModule) -> std::collections::HashSe
             f.name != "main"
                 && f.name != "println"
                 && f.params.is_empty()
-                && f.return_ty == SerializedTy::Int
+                && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool)
         })
-        .map(|f| f.name.clone())
+        .map(|f| (f.name.clone(), f.return_ty.clone()))
         .collect()
 }
 
@@ -203,7 +203,7 @@ fn callable_int_functions(module: &SerializedModule) -> std::collections::HashSe
 // zero-argument C externs would pass an incorrect ABI to the native backend.
 fn validate_module(module: &SerializedModule) -> Result<(), String> {
     let mut names = std::collections::HashSet::new();
-    let callable = callable_int_functions(module);
+    let callable = callable_functions(module);
     for func in &module.funcs {
         if !names.insert(&func.name) {
             return Err(format!("duplicate function: {}", func.name));
@@ -225,7 +225,7 @@ fn validate_stmt(
     s: &SerializedStmt,
     locals: &mut HashMap<String, SerializedTy>,
     return_ty: &SerializedTy,
-    callable: &std::collections::HashSet<String>,
+    callable: &HashMap<String, SerializedTy>,
 ) -> Result<(), String> {
     match s {
         SerializedStmt::Let { name, ty, value } => {
@@ -272,12 +272,12 @@ fn validate_stmt(
 fn validate_expr(
     e: &SerializedExpr,
     locals: &HashMap<String, SerializedTy>,
-    callable: &std::collections::HashSet<String>,
+    callable: &HashMap<String, SerializedTy>,
 ) -> Result<SerializedTy, String> {
     match e {
         SerializedExpr::Call { callee, args } => {
-            if callable.contains(callee) && args.is_empty() {
-                return Ok(SerializedTy::Int);
+            if let Some(result_ty) = callable.get(callee).filter(|_| args.is_empty()) {
+                return Ok(result_ty.clone());
             }
             if !matches!(callee.as_str(), "println" | "io.println" | "ori.io.println") {
                 return Err(format!("call to {callee} requires a typed function signature"));
@@ -323,7 +323,7 @@ fn validate_int_pair(
     left: &SerializedExpr,
     right: &SerializedExpr,
     locals: &HashMap<String, SerializedTy>,
-    callable: &std::collections::HashSet<String>,
+    callable: &HashMap<String, SerializedTy>,
 ) -> Result<SerializedTy, String> {
     if validate_expr(left, locals, callable)? != SerializedTy::Int
         || validate_expr(right, locals, callable)? != SerializedTy::Int
@@ -347,7 +347,7 @@ fn lower_func(
     sf: &SerializedFunc,
     ns: &str,
     def_id: DefId,
-    callable: &std::collections::HashSet<String>,
+    callable: &HashMap<String, SerializedTy>,
 ) -> HirFunc {
     let mut params = Vec::new();
     for p in &sf.params {
@@ -394,7 +394,7 @@ fn lower_func(
     }
 }
 
-fn lower_stmt(ss: &SerializedStmt, callable: &std::collections::HashSet<String>) -> HirStmt {
+fn lower_stmt(ss: &SerializedStmt, callable: &HashMap<String, SerializedTy>) -> HirStmt {
     match ss {
         SerializedStmt::Let { name, ty, value } => HirStmt::Let {
             name: SmolStr::new(name),
@@ -447,7 +447,7 @@ fn lower_binary_op(op: &SerializedBinaryOp) -> BinaryOp {
     }
 }
 
-fn lower_expr(se: &SerializedExpr, callable: &std::collections::HashSet<String>) -> HirExpr {
+fn lower_expr(se: &SerializedExpr, callable: &HashMap<String, SerializedTy>) -> HirExpr {
     match se {
         SerializedExpr::IntLit(val) => HirExpr {
             kind: HirExprKind::IntLit(*val),
@@ -501,7 +501,11 @@ fn lower_expr(se: &SerializedExpr, callable: &std::collections::HashSet<String>)
         },
         SerializedExpr::Call { callee, args } => {
             let is_print = callee == "println" || callee == "io.println" || callee == "ori.io.println";
-            let is_local = callable.contains(callee) && args.is_empty();
+            let local_result_ty = if args.is_empty() {
+                callable.get(callee).map(lower_ty)
+            } else {
+                None
+            };
             let (actual_callee, callee_ty) = if is_print {
                 (
                     SmolStr::new("ori_io_print"),
@@ -510,10 +514,10 @@ fn lower_expr(se: &SerializedExpr, callable: &std::collections::HashSet<String>)
                         ret: Box::new(Ty::Void),
                     },
                 )
-            } else if is_local {
+            } else if let Some(result_ty) = &local_result_ty {
                 (
                     SmolStr::new(callee),
-                    Ty::Func { params: vec![], ret: Box::new(Ty::Int) },
+                    Ty::Func { params: vec![], ret: Box::new(result_ty.clone()) },
                 )
             } else {
                 unreachable!("validated bridge call has an unknown signature")
@@ -550,7 +554,7 @@ fn lower_expr(se: &SerializedExpr, callable: &std::collections::HashSet<String>)
                     }),
                     args: lowered_args,
                 },
-                ty: if is_local { Ty::Int } else { Ty::Void },
+                ty: local_result_ty.unwrap_or(Ty::Void),
                 span: Span::DUMMY,
             }
         },

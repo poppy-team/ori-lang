@@ -60,6 +60,12 @@ started: 2026-09-07
 > statement. O gate compila stage1 com o cache incremental desativado para
 > garantir que mudanças nos módulos importados estejam no binário verificado.
 
+> A checagem de retorno passa a consultar bindings locais e assinaturas de
+> funções do módulo; comparações produzem `bool`. Chamadas `bool` passam em
+> `check` quando os retornos coincidem. A bridge agora emite essas chamadas
+> sem parâmetros, literais booleanos e comparações inteiras; bindings booleanos,
+> parâmetros e fluxo de controle ainda dependem de representação completa.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

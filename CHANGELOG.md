@@ -21,6 +21,14 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a binding from a later statement or another function no longer passes
   `check`. The bootstrap script forces a fresh Stage 0 compilation of all
   self-hosted modules so an incremental cache cannot reuse an older Stage 1.
+- The Stage 1 type checker resolves return types through local bindings,
+  forward calls to functions in the same module, and integer comparisons.
+  Its bootstrap checks valid boolean calls and rejects incompatible returns
+  from variables and functions during `check`.
+- The experimental bridge now emits zero-argument local calls returning
+  `bool`, boolean literals, and integer comparisons in boolean returns.
+  The bootstrap gate compares a native boolean call chain with Stage 0 and
+  inspects the `Bool` signatures and `Eq` operation in its bridge request.
 - The experimental frontend checks return types within each function's own
   statement range. A later function no longer inherits the entry function's
   return type; the bootstrap gate covers both valid and invalid signatures.

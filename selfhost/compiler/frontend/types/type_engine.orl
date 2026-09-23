@@ -20,7 +20,13 @@ public new_env() -> TypeEnv
 end
 
 public infer_expr_tag(pool: exprs.ExprPool, id: int) -> int
-    -- Returns canonical type tag: 0=unknown, 1=int, 2=string, 3=bool
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    return infer_expr_tag_in_env(new_env(), pool, id, no_names, no_returns)
+end
+
+public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string]) -> int
+    -- Returns canonical type tag: 0=unknown, 1=int, 2=string, 3=bool, 4=void.
     if id < 0 or id >= lists.len(pool.kind_tags)
         return 0
     end
@@ -32,15 +38,34 @@ public infer_expr_tag(pool: exprs.ExprPool, id: int) -> int
         return 2
     elif tag == 3
         return 3
-    elif tag == 4 -- Var / Ident, resolve via context in check phase
+    elif tag == 4 -- Resolve only bindings already visible in this function.
+        const name = lists.get(pool.str_vals, id)
+        var i = lists.len(env.binding_names) - 1
+        while i >= 0
+            if name == lists.get(env.binding_names, i)
+                return lists.get(env.binding_ty_tags, i)
+            end
+            i = i - 1
+        end
         return 0
-    elif tag == 5 -- Binary: infer left operand type
+    elif tag == 5
+        const op = lists.get(pool.str_vals, id)
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" or op == "and" or op == "or"
+            return 3
+        end
         const left_id = lists.get(pool.left_ids, id)
-        return infer_expr_tag(pool, left_id)
-    elif tag == 6 -- Call: unknown without manifest, assume int for math built-ins
-        return 1
-    elif tag == 10 -- Match expr: int for now
-        return 1
+        return infer_expr_tag_in_env(env, pool, left_id, func_names, func_ret_tys)
+    elif tag == 6
+        if lists.get(pool.left_ids, id) == -1
+            const callee = lists.get(pool.str_vals, id)
+            var fn_idx = 0
+            while fn_idx < lists.len(func_names)
+                if callee == lists.get(func_names, fn_idx)
+                    return type_str_to_tag(lists.get(func_ret_tys, fn_idx))
+                end
+                fn_idx = fn_idx + 1
+            end
+        end
     end
     return 0
 end
@@ -67,7 +92,9 @@ public check_stmt_with_expected(
     sp: stmts.StmtPool,
     pool: exprs.ExprPool,
     stmt_id: int,
-    expected_ret_tag: int
+    expected_ret_tag: int,
+    func_names: list[string],
+    func_ret_tys: list[string]
 )
     if stmt_id < 0 or stmt_id >= lists.len(sp.kind_tags)
         return
@@ -78,20 +105,20 @@ public check_stmt_with_expected(
     const target = lists.get(sp.target_names, stmt_id)
 
     if tag == 1 -- Const / Let
-        const inferred = infer_expr_tag(pool, expr_id)
+        const inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
         lists.push(env.binding_names, target)
         lists.push(env.binding_ty_tags, inferred)
     elif tag == 2 -- Return: check against expected_ret_tag
-        const ret_inferred = infer_expr_tag(pool, expr_id)
+        const ret_inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
         if expected_ret_tag != 0 and ret_inferred != 0
             if expected_ret_tag != ret_inferred
                 ds.emit_error(sink, "type.return_mismatch", "returned expression type does not match function signature", "adjust the returned value or the declared return type")
             end
         end
     elif tag == 3 -- Expr
-        infer_expr_tag(pool, expr_id)
+        infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
     elif tag == 4 -- If
-        const cond_ty = infer_expr_tag(pool, expr_id)
+        const cond_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
         if cond_ty != 3 and cond_ty != 1 and cond_ty != 0
             ds.emit_error(sink, "type.condition_not_bool", "condition must be of bool type", "wrap with comparison or boolean call")
         end
@@ -99,7 +126,9 @@ public check_stmt_with_expected(
 end
 
 public check_stmt(env: TypeEnv, sink: ds.DiagnosticSink, sp: stmts.StmtPool, pool: exprs.ExprPool, stmt_id: int)
-    check_stmt_with_expected(env, sink, sp, pool, stmt_id, 0)
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    check_stmt_with_expected(env, sink, sp, pool, stmt_id, 0, no_names, no_returns)
 end
 
 public check_all_statements(
@@ -130,10 +159,26 @@ public check_function_statement_range(
     last_stmt: int,
     fn_ret_ty: string
 ) -> int
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    return check_function_statement_range_in_module(env, sink, sp, pool, first_stmt, last_stmt, fn_ret_ty, no_names, no_returns)
+end
+
+public check_function_statement_range_in_module(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    first_stmt: int,
+    last_stmt: int,
+    fn_ret_ty: string,
+    func_names: list[string],
+    func_ret_tys: list[string]
+) -> int
     const expected_ret_tag = type_str_to_tag(fn_ret_ty)
     var i = first_stmt
     while i < last_stmt
-        check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag)
+        check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag, func_names, func_ret_tys)
         i = i + 1
     end
     return ds.error_count(sink)
