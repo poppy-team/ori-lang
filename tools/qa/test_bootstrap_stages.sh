@@ -25,6 +25,7 @@ module bootstrap.locals
 main()
     const original = 7
     var copy = original
+    var names: list[string] = []
 end
 ORI
 echo 'Stage 1: local binding smoke check'
