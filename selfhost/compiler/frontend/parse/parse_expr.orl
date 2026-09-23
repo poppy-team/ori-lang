@@ -5,7 +5,7 @@ import selfhost.compiler.frontend.lex.token as tok
 import selfhost.compiler.frontend.parse.node as node
 
 public struct ExprPool
-    kind_tags: list[int] -- 1=IntLit, 2=StrLit, 3=BoolLit, 4=Ident, 5=Binary, 6=Call
+    kind_tags: list[int] -- 1=IntLit, 2=StrLit, 3=BoolLit, 4=Ident, 5=Binary, 6=Call, 7=EmptyList
     left_ids: list[int]
     right_ids: list[int]
     str_vals: list[string]
@@ -111,6 +111,19 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
         end
         const id = alloc_expr_raw(pool, 10, -1, -1, "match_expr")
         return some(ParseExprOut { expr_id: id, next_cursor: m_cur })
+    case LBracket:
+        -- Typed empty lists are common in compiler code. Preserve a distinct
+        -- node; code generation rejects it until collection lowering exists.
+        if cursor + 1 < lists.len(tokens)
+            const close_tok = lists.get(tokens, cursor + 1)
+            match close_tok.kind
+            case RBracket:
+                const id = alloc_expr_raw(pool, 7, -1, -1, "")
+                return some(ParseExprOut { expr_id: id, next_cursor: cursor + 2 })
+            case else:
+            end
+        end
+        return none
     case Ident(name):
         if cursor + 1 < lists.len(tokens)
             const next_tok = lists.get(tokens, cursor + 1)
