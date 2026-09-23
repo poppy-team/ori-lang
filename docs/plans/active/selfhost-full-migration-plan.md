@@ -9,6 +9,13 @@ started: 2026-09-07
 
 # Plano Completo de Migração de Ponta a Ponta: Compilador Ori 100% Self-Hosted
 
+> Auditoria de 2026-09-23: `done` nas tabelas históricas não demonstra paridade
+> nem bootstrap real. A bridge não tem `ssa.rs` ou `linker.rs`, usa um
+> subconjunto de HIR e o frontend de produção Rust ainda é utilizado. A
+> verificação stage0→stage1→stage2→stage3 foi corrigida para falhar quando
+> stage1 ou stage2 não conseguem compilar a mesma fonte; nenhum ponto fixo
+> foi comprovado por essa verificação até agora.
+
 ## 1. Visão Geral e Diagnóstico Real
 
 O esqueleto modular do Marco B e o protótipo funcional das Ondas 1 a 5 comprovaram que a arquitetura pura (ADR-0006) é estável, determinística e convergente (`Stage 1 == Stage 2`).
@@ -79,8 +86,8 @@ Este documento é o plano **definitivo, denso e exaustivo** para migrar 100% des
 | ID | Pri | Esforço | Componente / Tarefa | Entradas | DoD / Entregáveis | Status |
 |---|:---:|:---:|---|---|---|:---:|
 | **B-SERDE-FULL** | P1 | L | `bridge/serde_full.orl` — Serialização completa de módulos HIR com corpos, variáveis e chamadas | `hir/` | Emissão de payloads JSON determinísticos em conformidade com o Protocolo v1 | `done` |
-| **B-SERVER-SSA** | P1 | XL | `compiler/crates/ori-bridge-server/src/ssa.rs` — Construção de SSA Cranelift a partir do payload recebido | `serde_full` | Emite código de máquina nativo para loops, branches, calls e alocações ARC | `done` |
-| **B-SERVER-LINK**| P1 | M | `compiler/crates/ori-bridge-server/src/linker.rs` — Invocação integrada do linker nativo com CRT e runtime staged | `ssa.rs` | Produz binários executáveis ELF/Mach-O/PE no disco | `done` |
+| **B-SERVER-SSA** | P1 | XL | `compiler/crates/ori-bridge-server/src/ssa.rs` — Construção de SSA Cranelift a partir do payload recebido | `serde_full` | Emite código de máquina nativo para loops, branches, calls e alocações ARC | `blocked` |
+| **B-SERVER-LINK**| P1 | M | `compiler/crates/ori-bridge-server/src/linker.rs` — Invocação integrada do linker nativo com CRT e runtime staged | `ssa.rs` | Produz binários executáveis ELF/Mach-O/PE no disco | `blocked` |
 | **B-HARDENING** | P2 | M | Endurecimento da bridge contra timeouts, corrupção de framing e cancelamento | `server.rs` | Bridge resistente a processos mortos e payloads corrompidos | `done` |
 
 ### Módulo 6: Correções no Runtime Rust (`ori-runtime` & JIT)
@@ -94,10 +101,10 @@ Este documento é o plano **definitivo, denso e exaustivo** para migrar 100% des
 | ID | Pri | Esforço | Marco de Validação | Critério de Aceite | Status |
 |---|:---:|:---:|---|---|:---:|
 | **BOOT-STAGE1** | P1 | L | Compilação do `selfhost/compiler/main.orl` via `stage0` gerando `bin/ori-stage1` nativo | Binário ELF autônomo executa `ori-stage1` diretamente sem Rust | `done` |
-| **BOOT-STAGE2** | P1 | XL | `ori-stage1` executa e auto-compila o compilador produzindo `ori-stage2` | Execução autônoma e geração determinística de `ori-stage2` | `done` |
-| **BOOT-STAGE3** | P1 | L | Ponto fixo: `diff <(ori-stage1) <(ori-stage2)` idêntico | Ponto fixo comprovado e determinístico via `tools/qa/test_selfhost_complete.sh` | `done` |
-| **CONF-SUITE** | P1 | XL | Execução de todos os 22 exemplos de `examples/` validados com sucesso | 100% de aprovação na suíte de conformance (22/22 `[OK]`) | `done` |
-| **RUST-RETIRE** | P1 | M | Frontend e pipeline escritos integralmente em Ori; runtime Rust preservado como ABI | Arquitetura ADR-0006 e RUNTIME01 formalmente consolidadas | `done` |
+| **BOOT-STAGE2** | P1 | XL | `ori-stage1` executa e auto-compila o compilador produzindo `ori-stage2` | Execução autônoma e geração determinística de `ori-stage2` | `blocked` |
+| **BOOT-STAGE3** | P1 | L | Stage2 compila stage3; comparar binários e conformance semântica | Ponto fixo demonstrado via `tools/qa/test_bootstrap_stages.sh` | `blocked` |
+| **CONF-SUITE** | P1 | XL | Executar os exemplos também com o compilador Ori | Resultados comparados ao stage0 em alvos e diagnósticos suportados | `blocked` |
+| **RUST-RETIRE** | P1 | M | Frontend e pipeline escritos integralmente em Ori; runtime Rust preservado como ABI | Arquitetura ADR-0006 e RUNTIME01 formalmente consolidadas | `blocked` |
 
 ---
 

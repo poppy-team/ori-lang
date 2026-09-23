@@ -9,6 +9,12 @@ created: 2026-09-09
 
 # Compilador Self-Hosted Ori — Tudo que ainda falta implementar
 
+> Auditoria de 2026-09-23: os itens históricos `done` abaixo indicam código
+> presente, mas não aprovam a paridade ou a autocompilação. Por exemplo,
+> `body_emitter.orl` ainda substitui formas desconhecidas por retorno zero,
+> `serde_full.orl` força tipos de retorno para `Int`, e o protocolo da bridge
+> não representa a HIR completa. Gate correto: `tools/qa/test_bootstrap_stages.sh`.
+
 > **Método:** comparação direta entre o compilador de referência Rust
 > (`compiler/crates/*`, ~48.8k linhas) e o compilador em Ori
 > (`selfhost/compiler/**/*`). Cada item existe no Rust e está ausente ou
@@ -137,7 +143,7 @@ created: 2026-09-09
 | ID | Pri | Esforço | Item | Aceite | Status |
 |---|:---:|:---:|---|---|:---:|
 | M7-01 | P1 | L | `bin/ori-stage1` ELF autônomo a partir de `main.orl` | Executa sem Rust | `done` |
-| M7-02 | P1 | XL | Stage 2/3 + `diff` + 251 testes via stage2 + aposentadoria do frontend Rust | Critérios do plano | `done` |
+| M7-02 | P1 | XL | Stage 2/3 + `diff` + 251 testes via stage2 + aposentadoria do frontend Rust | Critérios do plano | `blocked` |
 
 ## Ordem de execução proposta (dependências)
 

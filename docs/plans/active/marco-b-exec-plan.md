@@ -9,6 +9,13 @@ started: 2026-09-07
 
 # Plano de Execução: Marco B — Compilador Self-Host Modular em Ori
 
+> Auditoria de 2026-09-23: os estados `done` abaixo registram a implementação
+> declarada em 2026-09-07, não equivalência demonstrada com o stage0. O gate
+> antigo compilava stage1 e stage2 com stage0 e comparava apenas a saída de
+> `check`. A promoção, a conformidade e o bootstrap real continuam bloqueados
+> até stage1 compilar stage2, stage2 compilar stage3 e os binários e testes
+> semânticos serem avaliados. A bridge v1 só representa um subconjunto da HIR.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 
@@ -33,12 +40,12 @@ Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura 
 | **RESOLVE01** | P2 | M | Resolução de escopo léxico, tabela de símbolos e imports | AST01 | Submódulo `frontend/resolve/` (SOA, duplicata detectada) | `done` |
 | **TYPE01** | P1 | XL | Sistema de tipos puro: inferência, unificação e conformidade de traits | RESOLVE01 | Submódulo `frontend/types/` (`unify.orl`, `infer.orl`, `traits.orl`, `exhaustiveness.orl`) | `done` |
 | **HIR01** | P1 | L | Lowering para HIR (desugaring, explicit ARC inc/dec) | TYPE01 | Submódulo `hir/` com verificador estático | `done` |
-| **NATIVE02** | P1 | L | Emissão de IR pela Bridge e geração de binário final executável | HIR01, BRIDGE01, DATA01 | Integração completa ponta-a-ponta | `done` |
+| **NATIVE02** | P1 | L | Emissão de IR pela Bridge e geração de binário final executável | HIR01, BRIDGE01, DATA01 | Integração completa ponta-a-ponta | `in_progress` |
 | **CLI01** | P1 | M | Parser de argumentos de linha de comando e driver de pipeline | Stdlib | Submódulo `driver/` (`args.orl`, `pipeline.orl`) | `done` |
-| **BOOT01** | P1 | L | Multi-stage bootstrap (Stage 0 -> Stage 1 -> Stage 2 ponto fixo) | CLI01, NATIVE02 | Script `tools/qa/test_bootstrap_stages.sh` verificado | `done` |
-| **QUALITY01** | P1 | M | Validação completa de conformidade e integridade de pipeline | BOOT01 | Testes de unidade em cada módulo frontend/hir/bridge | `done` |
+| **BOOT01** | P1 | L | Multi-stage bootstrap (Stage 0 -> Stage 1 -> Stage 2 ponto fixo) | CLI01, NATIVE02 | Script `tools/qa/test_bootstrap_stages.sh` verificado | `blocked` |
+| **QUALITY01** | P1 | M | Validação completa de conformidade e integridade de pipeline | BOOT01 | Testes de unidade em cada módulo frontend/hir/bridge | `in_progress` |
 | **TOOLS01** | P2 | S | Serviço de formatação de código modular em Ori | AST01 | Submódulo `tools/fmt.orl` | `done` |
-| **ROLLOUT02** | P1 | M | Documentação viva completa, diário de bordo e promoção oficial | BOOT01, QUALITY01 | `docs/archive/selfhost-journal/README.md` | `done` |
+| **ROLLOUT02** | P1 | M | Documentação viva completa, diário de bordo e promoção oficial | BOOT01, QUALITY01 | `docs/archive/selfhost-journal/README.md` | `blocked` |
 
 ## 4. Definição de Concluído (DoD) para cada Etapa
 1. Código segue teto estrito de linhas e boas práticas de Clean Code sem `unwrap`/`panic` descontrolado.

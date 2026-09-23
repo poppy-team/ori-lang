@@ -1,8 +1,8 @@
 # Ori Language Specification — Chapter 20: Compiler Host/Bridge Protocol
 
-> Status: **normative for compiler host bridge** · **v1 in force**
+> Status: **experimental implementation, partial v1**
 > Audience: compiler implementers, tool authors, runtime maintainers
-> Surface: **S3 / Marco B** · workspace **`0.3.8-dev`**
+> Surface: **S3 / Marco B** · workspace **`0.3.8`**
 > Revision tag: **`ori-bridge-proto-1`**
 > Process: [ADR-0006](../decisions/adr/0006-selfhost-modular-architecture.md)
 
@@ -11,6 +11,15 @@
 ## 1. Purpose and Scope
 
 This chapter specifies the versioned framing protocol and data schema exchanged between the Ori self-hosted compiler frontend (`packages/compiler`) and the host code-generation bridge (`compiler/crates/ori-bridge-server`).
+
+**Implementation boundary (2026-09-23):** The process entry point currently
+accepts `--request-file <path>` containing an unframed JSON
+`CompileModuleRequest` and constructs the envelope itself. The framing helpers
+exist as library functions, but the self-host client does not use framed IPC.
+Only a subset of expressions and statements is serialized; this is not a
+complete HIR, nor a production bootstrap contract. The proposed ADR-0006
+describes the intended architecture. The schemas and timeouts below describe
+the target protocol, not features already implemented by the CLI.
 
 ### In Scope
 1. Length-prefixed framing and stream serialization.
@@ -162,3 +171,20 @@ Submits a lowered HIR module to the bridge to generate an object file or final b
 2. **Read Timeout**: Individual frame read timeout is `30 seconds`.
 3. **Execution Timeout**: Module compilation times out after `120 seconds`.
 4. **Deterministic Ordering**: All dictionaries/maps in the IR must be serialized in deterministic sorted key order to guarantee reproducible builds.
+
+## 6. Current experimental request-file subset
+
+The implemented process path reads a JSON object with `module`, `output_path`
+and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
+`name`, `params`, `return_ty`, `body_stmts`, and `is_public`. Types are tagged
+`Int`, `Float`, `Bool`, `String`, or `Void`. The supported statement shapes are
+`Let`, `Return`, `Expr`, and `If`; expressions are `IntLit`, `StrLit`,
+`BoolLit`, `Var`, `Add`, `Binary`, and `Call`. A built-in print call accepts
+zero or one string literal. Calls requiring an unknown function signature are
+rejected with `bridge.unsupported_ir` before an object is emitted. No other
+call signature should be inferred as a zero-argument C extern.
+
+The existing `--request-file` path does not enforce the proposed 30-second
+read timeout, 120-second compile timeout, 64 MiB frame limit, deterministic
+serialization, or all schema fields illustrated above. Do not claim those
+guards or full HIR compatibility based on the library framing tests.

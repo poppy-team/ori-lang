@@ -1,5 +1,14 @@
 # Diário de Bordo do Self-Host Ori: Da Teoria ao Ponto Fixo
 
+> **Correção de evidência (2026-09-23):** O título e os registros abaixo
+> refletem alegações históricas, não a conclusão verificada do self-host.
+> `test_selfhost_complete.sh` compilava stage1 e stage2 com stage0 e comparava
+> apenas a saída textual de `check`; os exemplos também eram validados por
+> stage0. O teste foi substituído por uma cadeia que exige que stage1 compile
+> stage2 e stage2 compile stage3. Ainda não há evidência de que a nova cadeia
+> passe. O compilador Rust segue como referência e backend; ADR-0006 ainda
+> está em estado `proposed`.
+
 > Uma jornada documentada em capítulos sobre como reconstruímos o compilador da linguagem Ori dentro da própria Ori, eliminando dívidas técnicas monolíticas e alcançando a independência de linguagem.
 
 ---

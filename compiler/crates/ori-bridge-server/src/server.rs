@@ -113,6 +113,19 @@ impl BridgeServer {
             }
         };
 
+        if let Err(message) = validate_module(&compile_req.module) {
+            return ResponseEnvelope {
+                protocol_version: CURRENT_PROTOCOL_VERSION,
+                request_id: req.request_id,
+                status: "error".to_string(),
+                data: None,
+                error: Some(BridgeErrorPayload {
+                    code: "bridge.unsupported_ir".to_string(),
+                    message,
+                }),
+            };
+        }
+
         let hir = lower_serialized_module(&compile_req.module);
         let out_path = Path::new(&compile_req.output_path);
 
@@ -151,27 +164,9 @@ impl BridgeServer {
 
 fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
     let mut funcs = Vec::new();
-    let mut extern_names = Vec::new();
 
     for (i, f) in sm.funcs.iter().enumerate() {
         funcs.push(lower_func(f, &sm.namespace, DefId(i as u32 + 1)));
-        for s in &f.body_stmts {
-            collect_callees_stmt(s, &mut extern_names);
-        }
-    }
-
-    let mut externs = Vec::new();
-    for ext in extern_names {
-        if !sm.funcs.iter().any(|f| f.name == ext) {
-            externs.push(ori_hir::hir::HirExtern::Func {
-                path: SmolStr::new(&ext),
-                name: SmolStr::new(&ext),
-                params: vec![],
-                return_ty: Ty::Void,
-                abi: SmolStr::new("C"),
-                span: Span::DUMMY,
-            });
-        }
     }
 
     HirModule {
@@ -182,50 +177,57 @@ fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
         trait_impls: vec![],
         funcs,
         consts: vec![],
-        externs,
+        externs: vec![],
     }
 }
 
-fn collect_callees_stmt(s: &SerializedStmt, out: &mut Vec<String>) {
-    match s {
-        SerializedStmt::Let { value, .. } => collect_callees_expr(value, out),
-        SerializedStmt::Return(Some(e)) => collect_callees_expr(e, out),
-        SerializedStmt::Return(None) => {}
-        SerializedStmt::Expr(e) => collect_callees_expr(e, out),
-        SerializedStmt::If { cond, then_stmts, else_stmts } => {
-            collect_callees_expr(cond, out);
-            for ts in then_stmts { collect_callees_stmt(ts, out); }
-            for es in else_stmts { collect_callees_stmt(es, out); }
+// Reject calls whose signatures are not represented by protocol v1. Fabricating
+// zero-argument C externs would pass an incorrect ABI to the native backend.
+fn validate_module(module: &SerializedModule) -> Result<(), String> {
+    for func in &module.funcs {
+        for stmt in &func.body_stmts {
+            validate_stmt(stmt)?;
         }
     }
+    Ok(())
 }
 
-fn collect_callees_expr(e: &SerializedExpr, out: &mut Vec<String>) {
+fn validate_stmt(s: &SerializedStmt) -> Result<(), String> {
+    match s {
+        SerializedStmt::Let { value, .. } => validate_expr(value)?,
+        SerializedStmt::Return(Some(e)) => validate_expr(e)?,
+        SerializedStmt::Return(None) => {}
+        SerializedStmt::Expr(e) => validate_expr(e)?,
+        SerializedStmt::If { cond, then_stmts, else_stmts } => {
+            validate_expr(cond)?;
+            for ts in then_stmts { validate_stmt(ts)?; }
+            for es in else_stmts { validate_stmt(es)?; }
+        }
+    }
+    Ok(())
+}
+
+fn validate_expr(e: &SerializedExpr) -> Result<(), String> {
     match e {
         SerializedExpr::Call { callee, args } => {
-            let is_builtin_print = callee == "println"
-                || callee == "io.println"
-                || callee == "ori.io.println"
-                || callee == "ori.io.print"
-                || callee == "ori_io_print"
-                || callee == "ori_io_eprint";
-            if !is_builtin_print && !out.contains(callee) {
-                out.push(callee.clone());
+            if !matches!(callee.as_str(), "println" | "io.println" | "ori.io.println") {
+                return Err(format!("call to {callee} requires a typed function signature"));
             }
-            for a in args {
-                collect_callees_expr(a, out);
+            if args.len() > 1 || args.iter().any(|arg| !matches!(arg, SerializedExpr::StrLit(_))) {
+                return Err("println requires zero or one string literal in protocol v1".to_string());
             }
         }
         SerializedExpr::Add(l, r) => {
-            collect_callees_expr(l, out);
-            collect_callees_expr(r, out);
+            validate_expr(l)?;
+            validate_expr(r)?;
         }
         SerializedExpr::Binary { left, right, .. } => {
-            collect_callees_expr(left, out);
-            collect_callees_expr(right, out);
+            validate_expr(left)?;
+            validate_expr(right)?;
         }
         _ => {}
     }
+    Ok(())
 }
 
 fn lower_ty(ty: &SerializedTy) -> Ty {

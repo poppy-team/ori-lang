@@ -10,6 +10,15 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Self-hosting progress
+
+- Stage 1 now exits with the driver result and reports bridge/link errors as
+  failures. Bootstrap verification requires Stage 1 to build Stage 2 and
+  Stage 2 to build Stage 3, then compares the built binaries. The bridge
+  rejects calls with unknown signatures instead of inventing C externs.
+  These changes expose remaining gaps; they do not establish a completed
+  self-hosted compiler or change the native ABI.
+
 ### Fixed
 
 - **Aggressive leaf inlining can materialize scalar argument temporaries.**

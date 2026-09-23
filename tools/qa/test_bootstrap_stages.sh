@@ -1,31 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== [BOOT01] Multi-Stage Bootstrap Test ==="
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+stage0=${ORI_STAGE0:-"$repo/compiler/target/debug/ori"}
 
-STAGE0="compiler/target/debug/ori"
-if [ ! -f "$STAGE0" ]; then
-    echo "ERROR: Stage0 compiler not found at $STAGE0"
+if [[ ! -x "$stage0" ]]; then
+    echo "Stage 0 compiler missing or not executable: $stage0" >&2
     exit 1
 fi
 
-echo "1. Validating Stage 1 source with Stage 0..."
-$STAGE0 check selfhost/compiler/main.orl
+# Keep the staged runtime and stdlib discoverable during the bootstrap.
+cd "$repo"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+source_file="$repo/selfhost/compiler/main.orl"
 
-echo "2. Simulating Stage 1 execution (Compiling itself)..."
-OUT_STAGE1=$($STAGE0 run selfhost/compiler/main.orl)
-echo "$OUT_STAGE1" | grep -q "STAGE1_COMPILER_READY"
-echo "Stage 1 check passed."
+echo 'Stage 0 -> Stage 1'
+"$stage0" compile "$source_file" -o "$work/ori-stage1"
+test -x "$work/ori-stage1" || { echo 'Stage 0 did not emit Stage 1' >&2; exit 1; }
 
-echo "3. Testing Stage 2 fixed-point generation..."
-OUT_STAGE2=$($STAGE0 run selfhost/compiler/main.orl)
-DIFF_OUT=$(diff <(echo "$OUT_STAGE1") <(echo "$OUT_STAGE2") || true)
+echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'
+"$work/ori-stage1" compile "$source_file" -o "$work/ori-stage2"
+test -x "$work/ori-stage2" || { echo 'Stage 1 did not emit Stage 2' >&2; exit 1; }
 
-if [ -n "$DIFF_OUT" ]; then
-    echo "FAIL: Stage 1 and Stage 2 outputs diverged!"
-    echo "$DIFF_OUT"
+echo 'Stage 2 -> Stage 3 (must use Stage 2)'
+"$work/ori-stage2" compile "$source_file" -o "$work/ori-stage3"
+test -x "$work/ori-stage3" || { echo 'Stage 2 did not emit Stage 3' >&2; exit 1; }
+
+# A binary comparison is useful evidence only after a real staged build.
+sha256sum "$work/ori-stage2" "$work/ori-stage3"
+cmp "$work/ori-stage2" "$work/ori-stage3" || {
+    echo 'Stage 2 and Stage 3 binaries differ; classify the divergence' >&2
     exit 1
-fi
+}
 
-echo "4. Fixed point verified: Stage 1 == Stage 2 (Deterministic outputs identical)."
-echo "=== [BOOT01] Bootstrap fixed-point SUCCESS ==="
+echo 'Stage 0/1/2: independent program checks'
+for compiler in "$stage0" "$work/ori-stage1" "$work/ori-stage2"; do
+    "$compiler" check "$repo/examples/hello/main.orl"
+done
+
+echo 'Real Stage 0 -> 1 -> 2 -> 3 bootstrap verified'

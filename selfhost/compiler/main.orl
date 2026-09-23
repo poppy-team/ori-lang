@@ -3,11 +3,12 @@ module selfhost.compiler.main
 import ori.args as cmd_args
 import ori.io as io
 import ori.list as lists
+import ori.os as os
 import selfhost.compiler.driver.args as args
 import selfhost.compiler.driver.pipeline as pipe
 
 main()
-    io.println("=== Ori Self-Hosted Compiler (Stage 1 Production) ===")
+    io.println("=== Ori Experimental Self-Hosted Compiler (Stage 1) ===")
 
     const raw_args = cmd_args.all()
     var tokens: list[string] = []
@@ -20,16 +21,10 @@ main()
         i = i + 1
     end
 
-    -- Fallback default for self-test if no args passed
-    if lists.len(tokens) == 0
-        lists.push(tokens, "check")
-        lists.push(tokens, "examples/hello/main.orl")
-    end
-
     const parsed = args.parse_cli(tokens)
     io.println(f"CLI: subcommand={parsed.subcommand} source={parsed.source_file} out={parsed.output_path}")
 
     const exit_code = pipe.dispatch_file(parsed)
     io.println(f"EXIT_CODE: {exit_code}")
-    io.println("STAGE1_COMPILER_READY")
+    os.exit(exit_code)
 end

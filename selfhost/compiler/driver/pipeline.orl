@@ -138,7 +138,8 @@ public dispatch(parsed: cli_args.CliArgs, content: string) -> int
     if parsed.subcommand == "compile"
         const link_res = bclient.invoke_bridge_and_link(res.payload_json, obj_tmp, final_bin)
         if not link_res.is_ok
-            io.println(f"COMPILE_NOTE: {link_res.message}")
+            io.println(f"error[bridge.compile]: {link_res.message}")
+            return 1
         else
             io.println(f"NATIVE_BINARY_EMITTED: {link_res.exe_path}")
         end
@@ -148,6 +149,10 @@ public dispatch(parsed: cli_args.CliArgs, content: string) -> int
 end
 
 public dispatch_file(parsed: cli_args.CliArgs) -> int
+    if parsed.subcommand != "check" and parsed.subcommand != "compile"
+        io.println(f"error[cli.unsupported_command]: {parsed.subcommand}")
+        return 1
+    end
     if parsed.source_file == ""
         io.println("error: no source file specified")
         return 1
