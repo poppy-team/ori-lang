@@ -37,6 +37,7 @@ public struct ParsedFile
     expr_str_vals: list[string]
     expr_count: int
     item_count: int
+    codegen_complete: bool
 end
 
 public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
@@ -61,6 +62,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
     const e_pub: list[int] = []
     var mod_name = "main"
     var pending_public = false
+    var codegen_complete = true
 
     -- 1. Check for optional module declaration
     match pi.parse_module_header(tokens, cur)
@@ -87,9 +89,12 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
                     cur = cur + 1
                 end
             case none:
+                codegen_complete = false
                 cur = cur + 1
             end
         case Struct:
+            -- The experimental bridge cannot serialize user-defined types.
+            codegen_complete = false
             const s_parser = pitem.Parser { tokens: tokens, cursor: cur, length: total }
             const s_out = pitem.parse_struct(s_parser, next_id)
             match s_out.item
@@ -111,6 +116,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
                 cur = dr.skip_to_sync(tokens, cur + 1)
             end
         case Enum:
+            codegen_complete = false
             const e_parser = pitem.Parser { tokens: tokens, cursor: cur, length: total }
             const e_out = pitem.parse_enum(e_parser, next_id)
             match e_out.item
@@ -156,18 +162,23 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
                         end
                         next_id = next_id + 1
                     else
+                        codegen_complete = false
                         cur = cur + 1
                     end
                 case else:
+                    codegen_complete = false
                     cur = cur + 1
                 end
             else
+                codegen_complete = false
                 cur = cur + 1
             end
         case Const:
             -- Top-level const declaration: const name: ty = value
+            codegen_complete = false
             cur = cur + 1
         case Extern:
+            codegen_complete = false
             -- Extern block: extern "C" ... end -- skip with depth tracking
             var e_cur = cur + 1
             var e_depth = 1
@@ -190,6 +201,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
                 cur = cur + 1
             end
         case else:
+            codegen_complete = false
             cur = cur + 1
         end
 
@@ -228,6 +240,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
         expr_right_ids: pool.right_ids,
         expr_str_vals: pool.str_vals,
         expr_count: expr_total,
-        item_count: next_id - 1
+        item_count: next_id - 1,
+        codegen_complete: codegen_complete
     }
 end

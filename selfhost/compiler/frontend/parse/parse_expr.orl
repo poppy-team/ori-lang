@@ -51,7 +51,29 @@ public alloc_expr(pool: ExprPool, kind: node.ExprKind, span: tok.Span) -> int
     case Ident(name):
         return alloc_expr_raw(pool, 4, -1, -1, name)
     case Binary(op, left_id, right_id):
-        return alloc_expr_raw(pool, 5, left_id, right_id, "")
+        const spelling = match op
+            case Add: "+"
+            case Sub: "-"
+            case Mul: "*"
+            case Div: "/"
+            case Mod: "%"
+            case Eq: "=="
+            case Ne: "!="
+            case Lt: "<"
+            case Le: "<="
+            case Gt: ">"
+            case Ge: ">="
+            case And: "and"
+            case Or: "or"
+            case Band: "&"
+            case Bor: "|"
+            case Bxor: "^"
+            case Shl: "<<"
+            case Shr: ">>"
+            case Pipe: "|>"
+            case Range: ".."
+            end
+        return alloc_expr_raw(pool, 5, left_id, right_id, spelling)
     case Call(callee, arg_ids):
         return alloc_expr_raw(pool, 6, lists.len(arg_ids), -1, callee)
     case else:
@@ -75,13 +97,15 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
         const id = alloc_expr_raw(pool, 1, -1, -1, raw)
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
     case FloatLit(raw):
-        const id = alloc_expr_raw(pool, 1, -1, -1, raw)
+        -- The v1 bridge cannot lower floats; keep them distinct from integers.
+        const id = alloc_expr_raw(pool, 8, -1, -1, raw)
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
     case StrLit(value):
         const id = alloc_expr_raw(pool, 2, -1, -1, value)
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
     case FStrLit(raw):
-        const id = alloc_expr_raw(pool, 2, -1, -1, raw)
+        -- Treat interpolation as its own expression until it has real lowering.
+        const id = alloc_expr_raw(pool, 9, -1, -1, raw)
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
     case True:
         const id = alloc_expr_raw(pool, 3, -1, -1, "true")
@@ -148,17 +172,25 @@ parse_call(tokens: list[tok.Token], cursor: int, pool: ExprPool, fn_name: string
     const owned_fn_name = fn_name + ""
     var cur = cursor + 2 -- Skip ident and '('
     var first_arg_id = -1
+    var arg_count = 0
     while cur < lists.len(tokens)
         const t = lists.get(tokens, cur)
         match t.kind
         case RParen:
-            const id = alloc_expr_raw(pool, 6, first_arg_id, -1, owned_fn_name)
+            -- A second argument cannot be represented by the current flat
+            -- expression pool. Keep an unsupported node rather than emitting
+            -- a call that silently drops the remaining arguments.
+            const id = if arg_count > 1 then
+                alloc_expr_raw(pool, 0, -1, -1, "call_arity")
+            else
+                alloc_expr_raw(pool, 6, first_arg_id, -1, owned_fn_name)
             return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
         case Comma:
             cur = cur + 1
         case else:
             match parse_primary(tokens, cur, pool)
             case some(out):
+                arg_count = arg_count + 1
                 if first_arg_id == -1
                     first_arg_id = out.expr_id
                 end

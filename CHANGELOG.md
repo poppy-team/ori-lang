@@ -12,6 +12,11 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- The experimental Stage 1 now keeps `->` return signatures and binary
+  operators and method receivers in its bridge payload. Unsupported interpolation,
+  call arguments, declarations and unparsed function tokens cause compilation to fail instead
+  of emitting a program with silently omitted or substituted code. The
+  bootstrap gate checks the serialized operators and negative cases.
 - The experimental Stage 1 parser now preserves keyword-named stdlib path
   segments such as `ori.list` and `ori.string` in imports and module headers.
   The bootstrap checks those imports before attempting self-compilation.

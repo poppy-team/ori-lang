@@ -63,7 +63,16 @@ public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.Exp
                                     end
                                 end
                             end
-                            const next_id = exprs.alloc_expr_raw(pool, 6, first_arg_id, -1, m_name)
+                            -- Preserve the receiver. Serializing every
+                            -- `.println` as the IO builtin would turn calls
+                            -- on unrelated values into output operations.
+                            var next_id = -1
+                            if lists.get(pool.kind_tags, current) == 4
+                                const receiver = lists.get(pool.str_vals, current)
+                                next_id = exprs.alloc_expr_raw(pool, 6, first_arg_id, -1, receiver + "." + m_name)
+                            else
+                                next_id = exprs.alloc_expr_raw(pool, 0, -1, -1, "method_receiver")
+                            end
                             current = next_id
                             cur = a_cur
                         case else:

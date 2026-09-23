@@ -129,7 +129,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const l_ctx = lo.new_lower_context(parsed_file.module_name)
     var k = 0
     const fn_total = lists.len(parsed_file.func_names)
-    var codegen_supported = fn_total > 0
+    var codegen_supported = fn_total > 0 and parsed_file.codegen_complete
     while k < fn_total
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
@@ -140,7 +140,8 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         end
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
-        if not bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret)
+        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret)
+        if not body_supported
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")
             var stmt_idx = first_stmt
@@ -165,7 +166,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
                 stmt_idx = stmt_idx + 1
             end
         end
-        const body_json = bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt)
+        const body_json = if body_supported then bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt) else ""
         lists.push(l_ctx.module_ir.func_names, fn_name)
         lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
         lists.push(l_ctx.module_ir.func_body_jsons, body_json)
@@ -174,7 +175,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const f_count = lo.module_func_count(l_ctx)
 
     -- 6. Bridge Payload Serialization (real lowered HIR with all module functions)
-    const bridge_json = bridge_serde.module_to_bridge_json(l_ctx.module_ir, out_path)
+    const bridge_json = if codegen_supported then bridge_serde.module_to_bridge_json(l_ctx.module_ir, out_path) else ""
     io.println(f"BRIDGE_PAYLOAD_BYTES: {su.len(bridge_json)}")
 
     return PipelineResult {

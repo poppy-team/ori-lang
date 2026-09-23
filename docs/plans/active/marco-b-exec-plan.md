@@ -26,6 +26,14 @@ started: 2026-09-07
 > fatia é modelar fielmente controle de fluxo, chamadas e tipos no frontend e
 > no protocolo da bridge, incluindo os módulos importados pelo compilador.
 
+> Execução 35899996200: a regressão de `ori.list.get` passou no CI Linux,
+> Windows GNU/MSVC e macOS ARM/x86; o pacote Linux reproduziu `retained` após
+> remoção do elemento da lista. O bootstrap ainda parou em `unsupported_ir` e
+> duas regressões anteriores de coleções continuam reprovando no macOS. A
+> próxima revisão do stage1 preserva `->` e operadores no payload, além de
+> recusar tokens e construções que o IR plano não codifica. Só uma execução
+> nova do gate pode promover essa revisão a comportamento verificado no CI.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

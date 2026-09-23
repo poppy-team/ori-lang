@@ -381,7 +381,16 @@ public next_token(lex: Lexer) -> NextOut
         if peek_byte(cur) == 61 -- '-='
             const st = advance_byte(cur)
             return NextOut { token: some(tok.Token { kind: tok.TokenKind.MinusEq, span: span }), next: st.next }
+        elif peek_byte(cur) == 62 -- '->'
+            const arrow_step = advance_byte(cur)
+            const after = arrow_step.next
+            const arrow_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Arrow, span: arrow_span }), next: after }
         end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Minus, span: span }), next: cur }
     elif ch == 44
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.Comma, span: span }), next: cur }
     elif ch == 46
@@ -462,17 +471,6 @@ public next_token(lex: Lexer) -> NextOut
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.LBrace, span: span }), next: cur }
     elif ch == 125
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.RBrace, span: span }), next: cur }
-    elif ch == 45
-        if peek_byte(cur) == 62
-            const arrow_step = advance_byte(cur)
-            const after = arrow_step.next
-            const arrow_span = tok.Span {
-                start_pos: tok.ByteOffset(start),
-                end_pos: tok.ByteOffset(after.cursor)
-            }
-            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Arrow, span: arrow_span }), next: after }
-        end
-        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Minus, span: span }), next: cur }
     elif ch == 61 -- '='
         if peek_byte(cur) == 62 -- '=>'
             const arrow_step = advance_byte(cur)
