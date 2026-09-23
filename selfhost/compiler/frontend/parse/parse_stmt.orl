@@ -81,6 +81,15 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
     case Ident(name):
         const ty_tok = lists.get(tokens, cursor + 2)
         match ty_tok.kind
+        case Eq:
+            -- Local inference: const/var name = expression.
+            match pr.parse_with_precedence(tokens, cursor + 3, pool, 0)
+            case some(val_out):
+                const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, name)
+                return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
+            case none:
+                return none
+            end
         case Colon:
             const val_name = name
             const ty_pool = pty.new_ty_pool()
@@ -151,6 +160,8 @@ public parse_statement(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPoo
     const t = lists.get(tokens, cursor)
     match t.kind
     case Const:
+        return parse_let(tokens, cursor, pool, sp)
+    case Var:
         return parse_let(tokens, cursor, pool, sp)
     case Return:
         return parse_return(tokens, cursor, pool, sp)
