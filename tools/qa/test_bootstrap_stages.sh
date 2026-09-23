@@ -149,6 +149,22 @@ echo 'Stage 0/1: compile a second function with its own return type'
 "$work/two-functions-stage0"
 "$work/two-functions-stage1"
 
+# The imported namespace remains a module even when a local binding has the
+# same spelling. Compare the actual output against the reference compiler.
+cat > "$work/shadowed-io.orl" <<'ORI'
+module bootstrap.shadowed_io
+import ori.io as io
+main()
+    const io = 4
+    io.println("module wins")
+end
+ORI
+"$stage0" compile "$work/shadowed-io.orl" -o "$work/shadowed-io-stage0"
+"$work/ori-stage1" compile "$work/shadowed-io.orl" -o "$work/shadowed-io-stage1"
+"$work/shadowed-io-stage0" > "$work/shadowed-io-stage0.stdout"
+"$work/shadowed-io-stage1" > "$work/shadowed-io-stage1.stdout"
+cmp "$work/shadowed-io-stage0.stdout" "$work/shadowed-io-stage1.stdout"
+
 # Every source construct that the flat IR cannot express must fail before
 # invoking the bridge; otherwise a successful binary could change semantics.
 assert_unsupported() {
@@ -194,9 +210,8 @@ main()
     number.println("wrong")
 end
 ORI
-cat > "$work/shadowed-io.orl" <<'ORI'
-module bootstrap.shadowed_io
-import ori.io as io
+cat > "$work/local-io.orl" <<'ORI'
+module bootstrap.local_io
 main()
     const io = 4
     io.println("wrong")
@@ -214,7 +229,7 @@ main()
     const value = 42
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print shadowed-io unknown-body missing-end; do
+for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end; do
     assert_unsupported "$name"
 done
 

@@ -195,8 +195,9 @@ source it cannot represent: interpolated strings, floats, multiple call
 arguments, non-IO method calls, unknown body tokens, user-defined type declarations, top-level
 constants, and incomplete function bodies. A `check` result does not imply
 that this restricted code generation path supports the checked program.
-The current print path accepts `io.println` only when `io` is an unshadowed
-alias for `ori.io`; arbitrary receiver names and renamed aliases remain
+The current print path accepts `io.println` only when `io` is an import alias
+for `ori.io`. The imported namespace takes precedence over a same-named local
+binding; arbitrary receiver names and renamed aliases remain
 outside the implemented bridge subset.
 
 The existing `--request-file` path does not enforce the proposed 30-second
