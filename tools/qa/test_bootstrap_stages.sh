@@ -19,6 +19,17 @@ echo 'Stage 0 -> Stage 1'
 "$stage0" compile "$source_file" -o "$work/ori-stage1"
 test -x "$work/ori-stage1" || { echo 'Stage 0 did not emit Stage 1' >&2; exit 1; }
 
+# Exercise inferred local bindings before attempting to compile the compiler.
+cat > "$work/locals.orl" <<'ORI'
+module bootstrap.locals
+main()
+    const original = 7
+    var copy = original
+end
+ORI
+echo 'Stage 1: local binding smoke check'
+"$work/ori-stage1" check "$work/locals.orl"
+
 echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'
 "$work/ori-stage1" compile "$source_file" -o "$work/ori-stage2"
 test -x "$work/ori-stage2" || { echo 'Stage 1 did not emit Stage 2' >&2; exit 1; }
