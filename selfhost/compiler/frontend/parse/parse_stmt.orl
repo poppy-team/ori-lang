@@ -108,7 +108,7 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
                     case StringTy: valid_elem = true
                     case BoolTy: valid_elem = true
                     case FloatTy: valid_elem = true
-                    case Ident(_): valid_elem = true
+                    case Ident(name): valid_elem = true
                     case else:
                     end
                     match open.kind
