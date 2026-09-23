@@ -14,7 +14,9 @@ started: 2026-09-07
 > antigo compilava stage1 e stage2 com stage0 e comparava apenas a saída de
 > `check`. A promoção, a conformidade e o bootstrap real continuam bloqueados
 > até stage1 compilar stage2, stage2 compilar stage3 e os binários e testes
-> semânticos serem avaliados. A bridge v1 só representa um subconjunto da HIR.
+> semânticos serem avaliados. O gate também compila e executa `examples/hello`
+> pelos três compiladores e compara a saída. A bridge v1 só representa um
+> subconjunto da HIR.
 
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.

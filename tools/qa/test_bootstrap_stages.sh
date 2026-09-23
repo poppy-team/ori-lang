@@ -39,4 +39,15 @@ for compiler in "$stage0" "$work/ori-stage1" "$work/ori-stage2"; do
     "$compiler" check "$repo/examples/hello/main.orl"
 done
 
+echo 'Stage 0/1/2: compile and execute the same independent program'
+index=0
+for compiler in "$stage0" "$work/ori-stage1" "$work/ori-stage2"; do
+    "$compiler" compile "$repo/examples/hello/main.orl" -o "$work/hello-$index"
+    test -x "$work/hello-$index" || { echo "Stage $index emitted no example binary" >&2; exit 1; }
+    "$work/hello-$index" > "$work/hello-$index.stdout"
+    index=$((index + 1))
+done
+cmp "$work/hello-0.stdout" "$work/hello-1.stdout"
+cmp "$work/hello-0.stdout" "$work/hello-2.stdout"
+
 echo 'Real Stage 0 -> 1 -> 2 -> 3 bootstrap verified'
