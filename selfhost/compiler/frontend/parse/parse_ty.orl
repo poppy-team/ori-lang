@@ -50,7 +50,15 @@ public parse_type_ref(tokens: list[tok.Token], cursor: int, pool: TyPool) -> opt
         const id = alloc_ty(pool, node.TyKind.Named(name: base_name), t.span)
         return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
     case List:
-        return parse_keyword_container(tokens, cursor, pool, "list")
+        if cursor + 1 < lists.len(tokens)
+            const open = lists.get(tokens, cursor + 1)
+            match open.kind
+            case LBracket:
+                return parse_bracketed_type(tokens, cursor + 2, "list", t.span, pool)
+            case else:
+            end
+        end
+        return none
     case Set:
         return parse_keyword_container(tokens, cursor, pool, "set")
     case Map:

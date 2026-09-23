@@ -92,27 +92,60 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
             end
         case Colon:
             const val_name = name
-            const ty_pool = pty.new_ty_pool()
-            match pty.parse_type_ref(tokens, cursor + 3, ty_pool)
-            case none:
-                return none
-            case some(ty_out):
-                if ty_out.next_cursor >= lists.len(tokens)
-                    return none
-                end
-                const eq_tok = lists.get(tokens, ty_out.next_cursor)
-                match eq_tok.kind
-                case Eq:
-                    match pr.parse_with_precedence(tokens, ty_out.next_cursor + 1, pool, 0)
-                    case some(val_out):
-                        const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, val_name)
-                        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
-                    case none:
-                        return none
+            var eq_cursor = -1
+            const type_start = lists.get(tokens, cursor + 3)
+            match type_start.kind
+            case List:
+                -- This local annotation only needs a cursor. Avoid storing
+                -- a nested TyNode in a temporary pool that is discarded.
+                if cursor + 7 < lists.len(tokens)
+                    const open = lists.get(tokens, cursor + 4)
+                    const elem = lists.get(tokens, cursor + 5)
+                    const close = lists.get(tokens, cursor + 6)
+                    var valid_elem = false
+                    match elem.kind
+                    case IntTy: valid_elem = true
+                    case StringTy: valid_elem = true
+                    case BoolTy: valid_elem = true
+                    case FloatTy: valid_elem = true
+                    case Ident(_): valid_elem = true
+                    case else:
                     end
-                case else:
+                    match open.kind
+                    case LBracket:
+                        match close.kind
+                        case RBracket:
+                            if valid_elem
+                                eq_cursor = cursor + 7
+                            end
+                        case else:
+                        end
+                    case else:
+                    end
+                end
+            case else:
+                const ty_pool = pty.new_ty_pool()
+                match pty.parse_type_ref(tokens, cursor + 3, ty_pool)
+                case some(ty_out):
+                    eq_cursor = ty_out.next_cursor
+                case none:
+                end
+            end
+            if eq_cursor < 0 or eq_cursor >= lists.len(tokens)
+                return none
+            end
+            const eq_tok = lists.get(tokens, eq_cursor)
+            match eq_tok.kind
+            case Eq:
+                match pr.parse_with_precedence(tokens, eq_cursor + 1, pool, 0)
+                case some(val_out):
+                    const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, val_name)
+                    return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
+                case none:
                     return none
                 end
+            case else:
+                return none
             end
         case else:
             return none
