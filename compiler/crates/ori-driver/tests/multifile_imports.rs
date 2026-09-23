@@ -11838,6 +11838,12 @@ import ori.fs = fs
 import ori.io = io
 
 main()
+    match fs.parse_fs_error("The system cannot find the file specified. (os error 2)")
+        case NotFound:
+            io.println("WINDOWS_NOT_FOUND_OK")
+        case else:
+            io.println("WINDOWS_NOT_FOUND_WRONG")
+    end
     match fs.try_read_text("non_existent_file_xyz_12345.txt")
         case ok(_):
             io.println("UNEXPECTED_OK")
@@ -11860,6 +11866,7 @@ end
     dir.write("main.orl", source);
 
     let stdout = compile_and_run(&dir, "fs_typed_error_native");
+    assert!(stdout.contains("WINDOWS_NOT_FOUND_OK"), "stdout: {stdout}");
     assert!(stdout.contains("NOT_FOUND_OK"), "stdout: {stdout}");
 }
 

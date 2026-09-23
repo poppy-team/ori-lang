@@ -335,3 +335,21 @@ jobs:
       - name: Smoke — package without Rust
         run: |
           sh tools/smoke_no_rust.sh --package-root ~/ori-smoke
+
+  selfhost-bootstrap:
+    name: selfhost-bootstrap (experimental)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+      - name: Build reference compiler, runtime, and bridge
+        working-directory: compiler
+        run: cargo build -p ori-driver -p ori-runtime -p ori-bridge-server --locked
+      - name: Stage runtime for native compilation
+        run: sh tools/stage_native_runtime.sh --profile debug --skip-build
+      - name: Verify real Stage 0 → Stage 1 → Stage 2 → Stage 3 and program output
+        run: bash tools/qa/test_bootstrap_stages.sh

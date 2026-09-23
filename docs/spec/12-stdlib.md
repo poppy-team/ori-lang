@@ -391,6 +391,9 @@ public enum FsError
 end
 ```
 
+`try_read_text` maps the host's missing-file message to `FsError.NotFound`,
+including the Windows "cannot find the file specified" form.
+
 The async variants complete on the native runtime and return the same
 `result[string,string]` shape after `await`. Blocking filesystem operations
 share a bounded native I/O pool: the queue holds at most 256 pending jobs and
