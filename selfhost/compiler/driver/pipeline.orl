@@ -9,7 +9,6 @@ import selfhost.compiler.bridge.bridge_client as bclient
 import selfhost.compiler.bridge.serde_full as bridge_serde
 import selfhost.compiler.driver.args as cli_args
 import selfhost.compiler.frontend.diag.sink as ds
-import selfhost.compiler.frontend.diag.source_map as sm
 import selfhost.compiler.frontend.lex.lexer as lex
 import selfhost.compiler.frontend.parse.file_parser as fp
 import selfhost.compiler.frontend.parse.parse_expr as exprs
@@ -118,16 +117,13 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     }
 end
 
-public render_sink_errors(sink: ds.DiagnosticSink, file_source: string)
-    const sf = sm.new_source_file("source.orl", file_source)
+public render_sink_errors(sink: ds.DiagnosticSink)
     var i = 0
     const total = ds.total_count(sink)
     while i < total
+        -- Diagnostic spans are not yet preserved by this frontend. Printing
+        -- a hard-coded source line for every error would blame unrelated code.
         io.println(f"error: {ds.diagnostic_message_at(sink, i)}")
-        const snippet = sm.render_error_snippet(sf, 1, 0, 4)
-        if snippet != ""
-            io.println(snippet)
-        end
         i = i + 1
     end
 end
@@ -139,7 +135,7 @@ public dispatch(parsed: cli_args.CliArgs, content: string) -> int
     io.println(f"PIPELINE_RESULT: {res.status} tokens={res.token_count} items={res.parsed_items} exprs={res.expr_count} symbols={res.symbol_count} funcs={res.func_count} errors={res.error_count}")
 
     if res.error_count > 0
-        render_sink_errors(res.sink, content)
+        render_sink_errors(res.sink)
         io.println(f"{res.error_count} error(s) found")
         return 1
     end
