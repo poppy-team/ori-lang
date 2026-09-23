@@ -41,7 +41,7 @@ pub struct HandshakeResponse {
     pub features: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum SerializedTy {
     Int,
     Float,

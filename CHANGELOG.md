@@ -18,6 +18,13 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejects calls with unknown signatures instead of inventing C externs.
   These changes expose remaining gaps; they do not establish a completed
   self-hosted compiler or change the native ABI.
+- The experimental Ori client preserves `int`/`void` return types and rejects
+  parameters and statements absent from its emitter before native compilation.
+  The bridge rejects undefined variables and mismatched binding, return and
+  arithmetic types before code generation. The Linux CI now runs bridge
+  protocol and invalid-IR regression tests.
+- Updated the pinned `rustls` and `rustls-webpki` dependencies to address
+  RUSTSEC-2026-0285 while keeping the Cargo audit gate enabled.
 
 ### Fixed
 

@@ -11,6 +11,7 @@ use ori_hir::hir::{
 };
 use ori_types::{DefId, Ty};
 use smol_str::SmolStr;
+use std::collections::HashMap;
 use std::path::Path;
 
 pub struct BridgeServer;
@@ -184,50 +185,125 @@ fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
 // Reject calls whose signatures are not represented by protocol v1. Fabricating
 // zero-argument C externs would pass an incorrect ABI to the native backend.
 fn validate_module(module: &SerializedModule) -> Result<(), String> {
+    let mut names = std::collections::HashSet::new();
     for func in &module.funcs {
+        if !names.insert(&func.name) {
+            return Err(format!("duplicate function: {}", func.name));
+        }
+        let mut locals = HashMap::new();
+        for param in &func.params {
+            if locals.insert(param.name.clone(), param.ty.clone()).is_some() {
+                return Err(format!("duplicate parameter: {}", param.name));
+            }
+        }
         for stmt in &func.body_stmts {
-            validate_stmt(stmt)?;
+            validate_stmt(stmt, &mut locals, &func.return_ty)?;
         }
     }
     Ok(())
 }
 
-fn validate_stmt(s: &SerializedStmt) -> Result<(), String> {
+fn validate_stmt(
+    s: &SerializedStmt,
+    locals: &mut HashMap<String, SerializedTy>,
+    return_ty: &SerializedTy,
+) -> Result<(), String> {
     match s {
-        SerializedStmt::Let { value, .. } => validate_expr(value)?,
-        SerializedStmt::Return(Some(e)) => validate_expr(e)?,
-        SerializedStmt::Return(None) => {}
-        SerializedStmt::Expr(e) => validate_expr(e)?,
-        SerializedStmt::If { cond, then_stmts, else_stmts } => {
-            validate_expr(cond)?;
-            for ts in then_stmts { validate_stmt(ts)?; }
-            for es in else_stmts { validate_stmt(es)?; }
+        SerializedStmt::Let { name, ty, value } => {
+            let actual = validate_expr(value, locals)?;
+            if actual != *ty || locals.contains_key(name) {
+                return Err(format!("invalid or duplicate binding: {name}"));
+            }
+            locals.insert(name.clone(), ty.clone());
+        }
+        SerializedStmt::Return(Some(e)) => {
+            if validate_expr(e, locals)? != *return_ty {
+                return Err("return type does not match function signature".to_string());
+            }
+        }
+        SerializedStmt::Return(None) => {
+            if *return_ty != SerializedTy::Void {
+                return Err("value required by function signature".to_string());
+            }
+        }
+        SerializedStmt::Expr(e) => {
+            validate_expr(e, locals)?;
+        }
+        SerializedStmt::If {
+            cond,
+            then_stmts,
+            else_stmts,
+        } => {
+            if validate_expr(cond, locals)? != SerializedTy::Bool {
+                return Err("if condition must be bool".to_string());
+            }
+            let mut then_locals = locals.clone();
+            let mut else_locals = locals.clone();
+            for ts in then_stmts {
+                validate_stmt(ts, &mut then_locals, return_ty)?;
+            }
+            for es in else_stmts {
+                validate_stmt(es, &mut else_locals, return_ty)?;
+            }
         }
     }
     Ok(())
 }
 
-fn validate_expr(e: &SerializedExpr) -> Result<(), String> {
+fn validate_expr(
+    e: &SerializedExpr,
+    locals: &HashMap<String, SerializedTy>,
+) -> Result<SerializedTy, String> {
     match e {
         SerializedExpr::Call { callee, args } => {
             if !matches!(callee.as_str(), "println" | "io.println" | "ori.io.println") {
                 return Err(format!("call to {callee} requires a typed function signature"));
             }
-            if args.len() > 1 || args.iter().any(|arg| !matches!(arg, SerializedExpr::StrLit(_))) {
+            if args.len() > 1
+                || args
+                    .iter()
+                    .any(|arg| !matches!(arg, SerializedExpr::StrLit(_)))
+            {
                 return Err("println requires zero or one string literal in protocol v1".to_string());
             }
+            Ok(SerializedTy::Void)
         }
-        SerializedExpr::Add(l, r) => {
-            validate_expr(l)?;
-            validate_expr(r)?;
+        SerializedExpr::Add(l, r) => validate_int_pair(l, r, locals),
+        SerializedExpr::Binary { op, left, right } => {
+            if !matches!(
+                op,
+                SerializedBinaryOp::Add
+                    | SerializedBinaryOp::Sub
+                    | SerializedBinaryOp::Mul
+                    | SerializedBinaryOp::Div
+                    | SerializedBinaryOp::Mod
+            ) {
+                return Err("comparison operations require typed bool lowering".to_string());
+            }
+            validate_int_pair(left, right, locals)
         }
-        SerializedExpr::Binary { left, right, .. } => {
-            validate_expr(left)?;
-            validate_expr(right)?;
-        }
-        _ => {}
+        SerializedExpr::IntLit(_) => Ok(SerializedTy::Int),
+        SerializedExpr::StrLit(_) => Ok(SerializedTy::String),
+        SerializedExpr::BoolLit(_) => Ok(SerializedTy::Bool),
+        SerializedExpr::Var(name) => match locals.get(name) {
+            Some(SerializedTy::Int) => Ok(SerializedTy::Int),
+            Some(_) => Err(format!("variable {name} requires typed lowering")),
+            None => Err(format!("undefined variable: {name}")),
+        },
     }
-    Ok(())
+}
+
+fn validate_int_pair(
+    left: &SerializedExpr,
+    right: &SerializedExpr,
+    locals: &HashMap<String, SerializedTy>,
+) -> Result<SerializedTy, String> {
+    if validate_expr(left, locals)? != SerializedTy::Int
+        || validate_expr(right, locals)? != SerializedTy::Int
+    {
+        return Err("arithmetic operands must be int".to_string());
+    }
+    Ok(SerializedTy::Int)
 }
 
 fn lower_ty(ty: &SerializedTy) -> Ty {

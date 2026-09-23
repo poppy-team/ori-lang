@@ -11,9 +11,11 @@ created: 2026-09-09
 
 > Auditoria de 2026-09-23: os itens históricos `done` abaixo indicam código
 > presente, mas não aprovam a paridade ou a autocompilação. Por exemplo,
-> `body_emitter.orl` ainda substitui formas desconhecidas por retorno zero,
-> `serde_full.orl` força tipos de retorno para `Int`, e o protocolo da bridge
-> não representa a HIR completa. Gate correto: `tools/qa/test_bootstrap_stages.sh`.
+> `body_emitter.orl` possuía retornos zero para formas desconhecidas e
+> `serde_full.orl` forçava tipos de retorno para `Int`. O driver agora recusa
+> emitir binário para essas formas e preserva `int`/`void` da assinatura;
+> a bridge ainda não representa HIR completa. Gate correto:
+> `tools/qa/test_bootstrap_stages.sh`.
 
 > **Método:** comparação direta entre o compilador de referência Rust
 > (`compiler/crates/*`, ~48.8k linhas) e o compilador em Ori

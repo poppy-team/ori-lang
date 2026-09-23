@@ -53,7 +53,8 @@ public payload_to_bridge_json(payload: SerdeFuncPayload, out_path: string) -> st
         i = i + 1
     end
     const joined = su.join(stmts, ",")
-    return f"{{\"module\":{{\"namespace\":\"\",\"funcs\":[{{\"name\":\"{payload.name}\",\"params\":[],\"return_ty\":\"Int\",\"body_stmts\":[{joined}],\"is_public\":true}}]}},\"output_path\":\"{out_path}\",\"lib_mode\":false}}"
+    const ret_ty = if payload.ret_ty_shape == "int" then "Int" else "Void"
+    return f"{{\"module\":{{\"namespace\":\"\",\"funcs\":[{{\"name\":\"{payload.name}\",\"params\":[],\"return_ty\":\"{ret_ty}\",\"body_stmts\":[{joined}],\"is_public\":true}}]}},\"output_path\":\"{out_path}\",\"lib_mode\":false}}"
 end
 
 public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> string
@@ -64,7 +65,8 @@ public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> strin
         const fname = lists.get(module_ir.func_names, i)
         const rtype = lists.get(module_ir.func_ret_tys, i)
         const body = lists.get(module_ir.func_body_jsons, i)
-        const fjson = f"{{\"name\":\"{fname}\",\"params\":[],\"return_ty\":\"Int\",\"body_stmts\":[{body}],\"is_public\":true}}"
+        const bridge_ret = if rtype == "int" then "Int" else "Void"
+        const fjson = f"{{\"name\":\"{fname}\",\"params\":[],\"return_ty\":\"{bridge_ret}\",\"body_stmts\":[{body}],\"is_public\":true}}"
         lists.push(funcs_json, fjson)
         i = i + 1
     end

@@ -27,6 +27,7 @@ public struct PipelineResult
     error_count: int
     sink: ds.DiagnosticSink
     payload_json: string
+    codegen_supported: bool
     status: string
 end
 
@@ -81,9 +82,16 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const l_ctx = lo.new_lower_context(parsed_file.module_name)
     var k = 0
     const fn_total = lists.len(parsed_file.func_names)
+    var codegen_supported = fn_total > 0
     while k < fn_total
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
+        if lists.get(parsed_file.func_param_counts, k) != 0 or (fn_ret != "int" and fn_ret != "void")
+            codegen_supported = false
+        end
+        if not bemitter.can_emit_range(sp, exp_pool, lists.get(parsed_file.func_first_stmt_idx, k), lists.get(parsed_file.func_last_stmt_idx, k), fn_ret)
+            codegen_supported = false
+        end
         const body_json = bemitter.emit_range_stmts_json(sp, exp_pool, lists.get(parsed_file.func_first_stmt_idx, k), lists.get(parsed_file.func_last_stmt_idx, k))
         lists.push(l_ctx.module_ir.func_names, fn_name)
         lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
@@ -105,6 +113,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         error_count: type_err_total,
         sink: sink,
         payload_json: bridge_json,
+        codegen_supported: codegen_supported,
         status: "pipeline_success"
     }
 end
@@ -136,6 +145,10 @@ public dispatch(parsed: cli_args.CliArgs, content: string) -> int
     end
 
     if parsed.subcommand == "compile"
+        if not res.codegen_supported
+            io.println("error[bridge.unsupported_ir]: this compiler cannot emit all declarations, parameters, return types, or statements in the source")
+            return 1
+        end
         const link_res = bclient.invoke_bridge_and_link(res.payload_json, obj_tmp, final_bin)
         if not link_res.is_ok
             io.println(f"error[bridge.compile]: {link_res.message}")

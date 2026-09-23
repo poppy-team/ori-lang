@@ -50,3 +50,22 @@ fn print_of_an_integer_is_rejected_instead_of_forging_a_string_type() {
     assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
     assert!(!dir.path().join("invalid.o").exists());
 }
+
+#[test]
+fn undefined_variable_is_rejected_before_codegen() {
+    let (res, dir) = compile_with_expr(SerializedExpr::Var("not_declared".to_string()));
+    assert_eq!(res.status, "error");
+    assert!(res.error.unwrap().message.contains("undefined variable"));
+    assert!(!dir.path().join("invalid.o").exists());
+}
+
+#[test]
+fn mixed_type_arithmetic_is_rejected_before_codegen() {
+    let (res, dir) = compile_with_expr(SerializedExpr::Add(
+        Box::new(SerializedExpr::IntLit(1)),
+        Box::new(SerializedExpr::StrLit("2".to_string())),
+    ));
+    assert_eq!(res.status, "error");
+    assert!(res.error.unwrap().message.contains("arithmetic operands"));
+    assert!(!dir.path().join("invalid.o").exists());
+}

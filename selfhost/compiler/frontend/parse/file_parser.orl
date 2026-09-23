@@ -14,6 +14,7 @@ public struct ParsedFile
     module_name: string
     func_names: list[string]
     func_ret_tys: list[string]
+    func_param_counts: list[int]
     func_first_stmt_idx: list[int]
     func_last_stmt_idx: list[int]
     func_is_public: list[int]
@@ -46,6 +47,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
     const empty_ids: list[int] = []
     const f_names: list[string] = []
     const f_rets: list[string] = []
+    const f_params: list[int] = []
     const f_first_stmts: list[int] = []
     const f_last_stmts: list[int] = []
     const f_pub: list[int] = []
@@ -136,6 +138,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
                     if full_out.has_func
                         lists.push(f_names, full_out.name)
                         lists.push(f_rets, full_out.ret_ty)
+                        lists.push(f_params, full_out.param_count)
                         lists.push(f_first_stmts, start_stmt_count)
                         lists.push(f_last_stmts, lists.len(sp.kind_tags))
                         lists.push(f_pub, if pending_public then 1 else 0)
@@ -197,6 +200,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
         module_name: mod_name,
         func_names: f_names,
         func_ret_tys: f_rets,
+        func_param_counts: f_params,
         func_first_stmt_idx: f_first_stmts,
         func_last_stmt_idx: f_last_stmts,
         func_is_public: f_pub,

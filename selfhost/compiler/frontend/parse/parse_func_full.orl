@@ -10,6 +10,7 @@ import selfhost.compiler.frontend.parse.parse_stmt as stmts
 public struct FullFuncFlat
     name: string
     ret_ty: string
+    param_count: int
     stmt_count: int
     next_cursor: int
     has_func: bool
@@ -46,15 +47,21 @@ public parse_function_flat(
 
     match sig_out.item
     case some(item):
-        const body_out = fbp.parse_statements_until_end(tokens, sig_out.next.cursor, pool, sp)
-        return FullFuncFlat {
-            name: fn_name,
-            ret_ty: "void",
-            stmt_count: lists.len(body_out.stmt_ids),
-            next_cursor: body_out.next_cursor,
-            has_func: true
-        }
+        match item
+        case Func(decl):
+            const body_out = fbp.parse_statements_until_end(tokens, sig_out.next.cursor, pool, sp)
+            return FullFuncFlat {
+                name: fn_name,
+                ret_ty: decl.ret_ty,
+                param_count: lists.len(decl.params),
+                stmt_count: lists.len(body_out.stmt_ids),
+                next_cursor: body_out.next_cursor,
+                has_func: true
+            }
+        case else:
+            return FullFuncFlat { name: "", ret_ty: "", param_count: 0, stmt_count: 0, next_cursor: start_cursor + 1, has_func: false }
+        end
     case none:
-        return FullFuncFlat { name: "", ret_ty: "", stmt_count: 0, next_cursor: start_cursor + 1, has_func: false }
+        return FullFuncFlat { name: "", ret_ty: "", param_count: 0, stmt_count: 0, next_cursor: start_cursor + 1, has_func: false }
     end
 end
