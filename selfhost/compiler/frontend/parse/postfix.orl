@@ -29,7 +29,9 @@ public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.Exp
                 const field_tok = lists.get(tokens, cur + 1)
                 match field_tok.kind
                 case Ident(name):
-                    const m_name = name
+                    -- Own the token payload before parsing arguments allocates
+                    -- more expressions and can release the borrowed token.
+                    const m_name = name + ""
                     -- Check for method call with args: .println("...")
                     if cur + 2 < lists.len(tokens)
                         const after_field = lists.get(tokens, cur + 2)
