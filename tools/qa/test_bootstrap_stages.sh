@@ -31,6 +31,14 @@ ORI
 echo 'Stage 1: local binding smoke check'
 "$work/ori-stage1" check "$work/locals.orl"
 
+echo 'Stage 0/1: compile and run a shared program before self-compilation'
+"$stage0" compile "$repo/examples/hello/main.orl" -o "$work/hello-stage0"
+"$work/ori-stage1" compile "$repo/examples/hello/main.orl" -o "$work/hello-stage1"
+test -x "$work/hello-stage0" && test -x "$work/hello-stage1"
+"$work/hello-stage0" > "$work/hello-stage0.stdout"
+"$work/hello-stage1" > "$work/hello-stage1.stdout"
+cmp "$work/hello-stage0.stdout" "$work/hello-stage1.stdout"
+
 echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'
 "$work/ori-stage1" compile "$source_file" -o "$work/ori-stage2"
 test -x "$work/ori-stage2" || { echo 'Stage 1 did not emit Stage 2' >&2; exit 1; }
