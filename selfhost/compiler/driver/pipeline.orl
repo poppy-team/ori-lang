@@ -128,13 +128,30 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     while k < fn_total
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
-        if lists.get(parsed_file.func_param_counts, k) != 0 or (fn_ret != "int" and fn_ret != "void")
+        const param_count = lists.get(parsed_file.func_param_counts, k)
+        if param_count != 0 or (fn_ret != "int" and fn_ret != "void")
             codegen_supported = false
+            io.println(f"CODEGEN_UNSUPPORTED_SIGNATURE: {fn_name} params={param_count} return={fn_ret}")
         end
-        if not bemitter.can_emit_range(sp, exp_pool, lists.get(parsed_file.func_first_stmt_idx, k), lists.get(parsed_file.func_last_stmt_idx, k), fn_ret)
+        const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
+        const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
+        if not bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret)
             codegen_supported = false
+            io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")
+            var stmt_idx = first_stmt
+            while stmt_idx < last_stmt
+                const stmt_tag = lists.get(sp.kind_tags, stmt_idx)
+                const expr_id = lists.get(sp.expr_ids, stmt_idx)
+                if expr_id >= 0 and expr_id < lists.len(exp_pool.kind_tags)
+                    const expr_tag = lists.get(exp_pool.kind_tags, expr_id)
+                    io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} expression={expr_tag}")
+                else
+                    io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} invalid_expression={expr_id}")
+                end
+                stmt_idx = stmt_idx + 1
+            end
         end
-        const body_json = bemitter.emit_range_stmts_json(sp, exp_pool, lists.get(parsed_file.func_first_stmt_idx, k), lists.get(parsed_file.func_last_stmt_idx, k))
+        const body_json = bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt)
         lists.push(l_ctx.module_ir.func_names, fn_name)
         lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
         lists.push(l_ctx.module_ir.func_body_jsons, body_json)
