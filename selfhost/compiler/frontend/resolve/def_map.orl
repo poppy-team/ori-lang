@@ -133,7 +133,9 @@ public pass2_resolve_idents_only(
         const tag = lists.get(kind_tags, i)
         if tag == 4 -- Ident / Var only
             const ref_name = lists.get(names, i)
-            if not is_builtin_or_primitive(ref_name)
+            if ref_name == ""
+                ds.emit_error(sink, "parse.empty_identifier", "empty identifier in parsed expression", "fix the lexer or parser before emitting IR")
+            elif not is_builtin_or_primitive(ref_name)
                 match lookup_def_id(dmap, ref_name)
                 case some(_):
                 case none:
@@ -150,7 +152,7 @@ is_builtin_or_primitive(name: string) -> bool
         return true
     elif name == "list" or name == "result" or name == "optional" or name == "map" or name == "set"
         return true
-    elif name == "io" or name == "println" or name == "print" or name == "ok" or name == "err" or name == "some" or name == "none"
+    elif name == "println" or name == "print" or name == "ok" or name == "err" or name == "some" or name == "none"
         return true
     end
     return false

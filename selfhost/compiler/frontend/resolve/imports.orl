@@ -36,6 +36,11 @@ public resolve_alias(mapping: ImportMapping, alias_name: string) -> optional[str
 end
 
 public module_to_file_path(base_dir: string, module_path: string) -> string
+    if su.starts_with(module_path, "ori.")
+        const stdlib_name = su.slice(module_path, 4, su.len(module_path))
+        const relative_stdlib = su.replace(stdlib_name, ".", "/")
+        return f"{base_dir}/stdlib/{relative_stdlib}.orl"
+    end
     const relative = su.replace(module_path, ".", "/")
     return f"{base_dir}/{relative}.orl"
 end

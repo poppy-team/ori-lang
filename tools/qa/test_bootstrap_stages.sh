@@ -31,6 +31,26 @@ ORI
 echo 'Stage 1: local binding smoke check'
 "$work/ori-stage1" check "$work/locals.orl"
 
+# An unresolved module must fail the check instead of making its alias a
+# silently accepted name.
+cat > "$work/missing-import.orl" <<'ORI'
+module bootstrap.missing
+import absent.bootstrap.module as missing
+main()
+    missing.run()
+end
+ORI
+echo 'Stage 1: missing import must fail closed'
+if "$work/ori-stage1" check "$work/missing-import.orl" > "$work/missing-import.log" 2>&1; then
+    echo 'Stage 1 accepted a missing import' >&2
+    exit 1
+fi
+if ! grep -q 'project.import_not_found' "$work/missing-import.log"; then
+    cat "$work/missing-import.log" >&2
+    echo 'Stage 1 failed without diagnosing the missing import' >&2
+    exit 1
+fi
+
 echo 'Stage 0/1: compile and run a shared program before self-compilation'
 cat > "$work/hello-minimal.orl" <<'ORI'
 module bootstrap.hello

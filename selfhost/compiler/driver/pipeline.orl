@@ -11,9 +11,11 @@ import selfhost.compiler.driver.args as cli_args
 import selfhost.compiler.frontend.diag.sink as ds
 import selfhost.compiler.frontend.lex.lexer as lex
 import selfhost.compiler.frontend.parse.file_parser as fp
+import selfhost.compiler.frontend.parse.parse_import as pi
 import selfhost.compiler.frontend.parse.parse_expr as exprs
 import selfhost.compiler.frontend.parse.parse_stmt as stmts
 import selfhost.compiler.frontend.resolve.def_map as dm
+import selfhost.compiler.frontend.resolve.loader as loader
 import selfhost.compiler.frontend.types.type_engine as te
 import selfhost.compiler.hir.lower as lo
 
@@ -43,6 +45,31 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const dmap = dm.new_def_map()
     const sink = ds.new_sink()
     dm.pass1_collect_declarations_pub(dmap, sink, parsed_file.module_name, parsed_file.func_names, parsed_file.func_is_public, parsed_file.struct_names, parsed_file.struct_is_public, parsed_file.enum_names, parsed_file.enum_is_public)
+    -- A module alias is in scope only when its source can be loaded and its
+    -- declaration matches the import. Linking its definitions remains a
+    -- separate, required compiler step.
+    var import_idx = 0
+    while import_idx < lists.len(parsed_file.import_paths)
+        const path = lists.get(parsed_file.import_paths, import_idx)
+        const alias_name = lists.get(parsed_file.import_aliases, import_idx)
+        match loader.load_module_text(path, ".")
+        case ok(import_content):
+            const imported_tokens = lex.tokenize_all(import_content)
+            match pi.parse_module_header(imported_tokens, 0)
+            case some(header):
+                if header.name == path
+                    dm.register_def(dmap, sink, alias_name, path, 10, false)
+                else
+                    ds.emit_error(sink, "project.import_module_mismatch", f"import {path} declares {header.name}", "use the module path declared by the imported file")
+                end
+            case none:
+                ds.emit_error(sink, "project.import_missing_module", f"import {path} has no module declaration", "add a matching module declaration")
+            end
+        case err(message):
+            ds.emit_error(sink, "project.import_not_found", message, "check the imported module path")
+        end
+        import_idx = import_idx + 1
+    end
     dm.register_local_bindings(dmap, parsed_file.stmt_target_names)
     dm.pass2_resolve_idents_only(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_str_vals)
     const sym_count = dm.total_defs(dmap)
