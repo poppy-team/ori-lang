@@ -18,7 +18,11 @@ started: 2026-09-07
 
 ## 1. Visão Geral e Diagnóstico Real
 
-O esqueleto modular do Marco B e o protótipo funcional das Ondas 1 a 5 comprovaram que a arquitetura pura (ADR-0006) é estável, determinística e convergente (`Stage 1 == Stage 2`).
+O esqueleto modular do Marco B e o protótipo funcional das Ondas 1 a 5
+demonstram apenas partes da arquitetura ADR-0006. O stage1 compila e executa
+um programa mínimo, mas ainda não produz stage2: sua emissão rejeita os corpos
+e módulos necessários para compilar `selfhost/compiler/main.orl`. Portanto,
+convergência entre stage1 e stage2 ainda não foi medida.
 
 No entanto, o compilador de produção em Rust ainda totaliza **48.824 linhas** de código de alta densidade semântica:
 - `ori-codegen/src/native_backend.rs`: **21.153 linhas** (layout de memória, SSA, vtables, calling conventions, CRT/link).

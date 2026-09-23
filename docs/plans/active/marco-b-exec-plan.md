@@ -18,6 +18,14 @@ started: 2026-09-07
 > pelos três compiladores e compara a saída. A bridge v1 só representa um
 > subconjunto da HIR.
 
+> CI de 2026-09-23, execução 35893003937: stage0 produz stage1; stage1
+> verifica imports com nomes reservados e compila/executa um `hello` mínimo.
+> Ao compilar o próprio `main.orl`, o frontend lê 152 tokens, analisa 37
+> expressões e valida seis imports sem erro. A emissão recusa o corpo com
+> `bridge.unsupported_ir`; nenhum stage2 ou stage3 foi produzido. A próxima
+> fatia é modelar fielmente controle de fluxo, chamadas e tipos no frontend e
+> no protocolo da bridge, incluindo os módulos importados pelo compilador.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

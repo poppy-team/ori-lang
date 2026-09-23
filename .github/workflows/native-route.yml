@@ -82,6 +82,9 @@ jobs:
       - name: Test runtime
         run: cargo test -p ori-runtime --locked -- --test-threads=1
 
+      - name: Test managed list read ownership
+        run: cargo test -p ori-driver --test memory_arc compile_runs_native_list_get_keeps_removed_struct_alive --locked
+
       - name: Test native driver integration
         run: cargo test -p ori-driver --test multifile_imports --locked
 

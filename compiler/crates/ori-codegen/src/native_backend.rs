@@ -15556,7 +15556,18 @@ impl<'a> FuncCodegen<'a> {
                             // list (or reads it after the list is removed).
                             if name.as_str() == "ori_list_get" {
                                 if let Some(value) = result {
-                                    self.emit_arc_retain_if_managed(&expr.ty, value)?;
+                                    // Generic runtime signatures can leave the
+                                    // call result as `Ty::Infer`. The list
+                                    // argument carries the concrete element
+                                    // type needed to decide whether to retain.
+                                    let element_ty = args
+                                        .first()
+                                        .and_then(|arg| match &arg.value.ty {
+                                            Ty::List(element) => Some(element.as_ref()),
+                                            _ => None,
+                                        })
+                                        .unwrap_or(&expr.ty);
+                                    self.emit_arc_retain_if_managed(element_ty, value)?;
                                 }
                             }
                             // Release fresh managed temporaries passed to
