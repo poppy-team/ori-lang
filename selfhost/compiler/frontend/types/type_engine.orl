@@ -104,6 +104,11 @@ public check_stmt_with_expected(
 
     if tag == 1 -- Const / Let
         const inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        const declared = lists.get(sp.type_annotations, stmt_id)
+        const declared_tag = type_str_to_tag(declared)
+        if declared != "" and declared_tag != 0 and inferred != 0 and declared_tag != inferred
+            ds.emit_error(sink, "type.type_mismatch", "binding type does not match its annotation: " + target, "use a value of the declared type")
+        end
         lists.push(env.binding_names, target)
         lists.push(env.binding_ty_tags, inferred)
     elif tag == 2 -- Return: check against expected_ret_tag

@@ -272,6 +272,40 @@ assert funcs[1]["body_stmts"][0]["Return"] == {"Var": "value"}, funcs
 assert funcs[2]["return_ty"] == "Bool", funcs
 PY
 
+cat > "$work/boolean-local.orl" <<'ORI'
+module bootstrap.boolean_local
+import ori.io as io
+main()
+    const outcome: bool = ready()
+    const another = outcome
+    another
+    io.println("boolean local executed")
+end
+ready() -> bool
+    const good: bool = 6 == 6
+    return good
+end
+ORI
+echo 'Stage 0/1: boolean locals retain their type through native codegen'
+"$stage0" compile "$work/boolean-local.orl" -o "$work/boolean-local-stage0"
+"$work/ori-stage1" compile "$work/boolean-local.orl" -o "$work/boolean-local-stage1"
+"$work/boolean-local-stage0" > "$work/boolean-local-stage0.stdout"
+"$work/boolean-local-stage1" > "$work/boolean-local-stage1.stdout"
+cmp "$work/boolean-local-stage0.stdout" "$work/boolean-local-stage1.stdout"
+python3 - "$work/boolean-local-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert funcs[0]["body_stmts"][0]["Let"]["ty"] == "Bool", funcs
+assert funcs[0]["body_stmts"][1]["Let"] == {
+    "name": "another", "ty": "Bool", "value": {"Var": "outcome"}
+}, funcs
+assert funcs[1]["body_stmts"][0]["Let"]["ty"] == "Bool", funcs
+assert funcs[1]["body_stmts"][1]["Return"] == {"Var": "good"}, funcs
+PY
+
 # The imported namespace remains a module even when a local binding has the
 # same spelling. Compare the actual output against the reference compiler.
 cat > "$work/shadowed-io.orl" <<'ORI'
@@ -440,6 +474,12 @@ main() -> int
     return 7 == 7
 end
 ORI
+cat > "$work/mistyped-binding-annotation.orl" <<'ORI'
+module bootstrap.mistyped_binding_annotation
+main()
+    const flag: bool = 42
+end
+ORI
 cat > "$work/cross-function-binding.orl" <<'ORI'
 module bootstrap.cross_function_binding
 main() -> int
@@ -486,6 +526,16 @@ for name in wrong-call-return mistyped-local mistyped-forward-call mistyped-comp
         exit 1
     }
 done
+
+echo 'Stage 1: a local type annotation must match the expression'
+if "$work/ori-stage1" check "$work/mistyped-binding-annotation.orl" > "$work/mistyped-binding-annotation.check.log" 2>&1; then
+    echo 'Stage 1 accepted a mismatched local type annotation' >&2
+    exit 1
+fi
+grep -q 'type.type_mismatch' "$work/mistyped-binding-annotation.check.log" || {
+    cat "$work/mistyped-binding-annotation.check.log" >&2
+    exit 1
+}
 
 # A module-wide symbol table must not expose another function's local binding
 # to check or compile. The reference frontend reports name.undefined here.

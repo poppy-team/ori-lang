@@ -73,6 +73,12 @@ started: 2026-09-07
 > escopo. Stage2/stage3 permanecem dependentes de estruturas de controle,
 > coleções, expressões compostas e ligação efetiva dos imports do compilador.
 
+> A run 203 confirmou chamadas locais com um parâmetro `int` no objeto nativo
+> com a mesma saída do stage0 e os testes negativos; a autocompilação continua
+> parando em `bridge.unsupported_ir` no `main.orl`. A revisão seguinte preserva
+> também bindings locais `bool` e suas anotações até a bridge, com paridade
+> nativa e rejeição de anotações incompatíveis.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

@@ -12,6 +12,11 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 and the bridge now preserve `bool` local bindings and Boolean
+  variable reads, including an explicitly annotated binding. A new bootstrap
+  fixture compares native execution with Stage 0 and checks the `Bool` HIR
+  payload. Local annotations that disagree with their values report the
+  existing `type.type_mismatch` diagnostic.
 - Stage 1 now preserves one `int` parameter per local function through its
   parser, scope checks, type checks, and bridge payload. Local forward calls
   pass one supported integer argument; the bridge validates argument types and

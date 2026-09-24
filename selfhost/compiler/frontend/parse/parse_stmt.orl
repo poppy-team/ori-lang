@@ -13,16 +13,19 @@ public struct StmtPool
     kind_tags: list[int] -- 1=Const, 2=Return, 3=Expr, 4=If
     expr_ids: list[int]
     target_names: list[string]
+    type_annotations: list[string]
 end
 
 public new_stmt_pool() -> StmtPool
     const empty_k: list[int] = []
     const empty_e: list[int] = []
     const empty_t: list[string] = []
+    const empty_a: list[string] = []
     return StmtPool {
         kind_tags: empty_k,
         expr_ids: empty_e,
-        target_names: empty_t
+        target_names: empty_t,
+        type_annotations: empty_a
     }
 end
 
@@ -31,6 +34,7 @@ public alloc_stmt_raw(pool: StmtPool, kind: int, expr_id: int, target: string) -
     lists.push(pool.kind_tags, kind)
     lists.push(pool.expr_ids, expr_id)
     lists.push(pool.target_names, target)
+    lists.push(pool.type_annotations, "")
     return id
 end
 
@@ -94,7 +98,23 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
             const val_name = name
             var eq_cursor = -1
             const type_start = lists.get(tokens, cursor + 3)
+            var declared_ty = "unsupported"
             match type_start.kind
+            case IntTy:
+                declared_ty = "int"
+                eq_cursor = cursor + 4
+            case BoolTy:
+                declared_ty = "bool"
+                eq_cursor = cursor + 4
+            case StringTy:
+                declared_ty = "string"
+                eq_cursor = cursor + 4
+            case FloatTy:
+                declared_ty = "float"
+                eq_cursor = cursor + 4
+            case Ident(name):
+                declared_ty = name
+                eq_cursor = cursor + 4
             case List:
                 -- This local annotation only needs a cursor. Avoid storing
                 -- a nested TyNode in a temporary pool that is discarded.
@@ -140,6 +160,7 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
                 match pr.parse_with_precedence(tokens, eq_cursor + 1, pool, 0)
                 case some(val_out):
                     const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, val_name)
+                    lists.set(sp.type_annotations, stmt_id, declared_ty)
                     return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
                 case none:
                     return none

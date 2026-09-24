@@ -185,10 +185,12 @@ argument and an `Int` or `Bool` return, use the declared module signature,
 including forward calls. The bridge checks argument count and type before
 emitting an object. Calls requiring an unknown function signature are rejected
 with `bridge.unsupported_ir`; no external signature is inferred.
-The bridge additionally validates local integer bindings, return types,
+The bridge additionally validates local integer and Boolean bindings, return types,
 integer arithmetic, comparisons between integers (producing `Bool`),
-and Boolean `if` conditions. Undefined variables and non-integer variable use
-are rejected until typed lowering exists. The Ori client can emit zero-argument
+and Boolean `if` conditions. Undefined variables and variable types other than
+`Int` and `Bool` are rejected until their typed lowering exists. The Ori client
+preserves explicit primitive local annotations and rejects an annotation that
+disagrees with its value. It can emit zero-argument
 functions and functions with one `int` parameter; it preserves the parameter
 name, resolves it within its function, and accepts integer arguments for local
 calls. Parameters on `main`, other parameter types, more than one parameter,

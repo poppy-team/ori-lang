@@ -328,7 +328,7 @@ fn validate_expr(
         SerializedExpr::StrLit(_) => Ok(SerializedTy::String),
         SerializedExpr::BoolLit(_) => Ok(SerializedTy::Bool),
         SerializedExpr::Var(name) => match locals.get(name) {
-            Some(SerializedTy::Int) => Ok(SerializedTy::Int),
+            Some(ty) if *ty == SerializedTy::Int || *ty == SerializedTy::Bool => Ok(ty.clone()),
             Some(_) => Err(format!("variable {name} requires typed lowering")),
             None => Err(format!("undefined variable: {name}")),
         },
@@ -378,8 +378,13 @@ fn lower_func(
     }
 
     let mut stmts = Vec::new();
+    let mut locals: HashMap<String, SerializedTy> = sf
+        .params
+        .iter()
+        .map(|p| (p.name.clone(), p.ty.clone()))
+        .collect();
     for s in &sf.body_stmts {
-        stmts.push(lower_stmt(s, callable));
+        stmts.push(lower_stmt(s, callable, &mut locals));
     }
 
     // Qualify the entrypoint name the same way `is_entry_main` expects:
@@ -410,40 +415,59 @@ fn lower_func(
     }
 }
 
-fn lower_stmt(ss: &SerializedStmt, callable: &CallableSignatures) -> HirStmt {
+fn lower_stmt(
+    ss: &SerializedStmt,
+    callable: &CallableSignatures,
+    locals: &mut HashMap<String, SerializedTy>,
+) -> HirStmt {
     match ss {
-        SerializedStmt::Let { name, ty, value } => HirStmt::Let {
-            name: SmolStr::new(name),
-            ty: lower_ty(ty),
-            mutable: false,
-            value: lower_expr(value, callable),
-            span: Span::DUMMY,
-        },
-        SerializedStmt::Return(maybe_expr) => {
-            HirStmt::Return(maybe_expr.as_ref().map(|e| lower_expr(e, callable)), Span::DUMMY)
+        SerializedStmt::Let { name, ty, value } => {
+            let lowered_value = lower_expr(value, callable, locals);
+            locals.insert(name.clone(), ty.clone());
+            HirStmt::Let {
+                name: SmolStr::new(name),
+                ty: lower_ty(ty),
+                mutable: false,
+                value: lowered_value,
+                span: Span::DUMMY,
+            }
         }
-        SerializedStmt::Expr(expr) => HirStmt::Expr(lower_expr(expr, callable)),
+        SerializedStmt::Return(maybe_expr) => {
+            HirStmt::Return(maybe_expr.as_ref().map(|e| lower_expr(e, callable, locals)), Span::DUMMY)
+        }
+        SerializedStmt::Expr(expr) => HirStmt::Expr(lower_expr(expr, callable, locals)),
         SerializedStmt::If {
             cond,
             then_stmts,
             else_stmts,
-        } => HirStmt::If {
-            cond: lower_expr(cond, callable),
-            then: HirBlock {
-                stmts: then_stmts.iter().map(|s| lower_stmt(s, callable)).collect(),
-                span: Span::DUMMY,
-            },
-            else_ifs: vec![],
-            else_: if else_stmts.is_empty() {
-                None
-            } else {
-                Some(HirBlock {
-                    stmts: else_stmts.iter().map(|s| lower_stmt(s, callable)).collect(),
+        } => {
+            let lowered_cond = lower_expr(cond, callable, locals);
+            let mut then_locals = locals.clone();
+            let mut else_locals = locals.clone();
+            HirStmt::If {
+                cond: lowered_cond,
+                then: HirBlock {
+                    stmts: then_stmts
+                        .iter()
+                        .map(|s| lower_stmt(s, callable, &mut then_locals))
+                        .collect(),
                     span: Span::DUMMY,
-                })
-            },
-            span: Span::DUMMY,
-        },
+                },
+                else_ifs: vec![],
+                else_: if else_stmts.is_empty() {
+                    None
+                } else {
+                    Some(HirBlock {
+                        stmts: else_stmts
+                            .iter()
+                            .map(|s| lower_stmt(s, callable, &mut else_locals))
+                            .collect(),
+                        span: Span::DUMMY,
+                    })
+                },
+                span: Span::DUMMY,
+            }
+        }
     }
 }
 
@@ -463,7 +487,11 @@ fn lower_binary_op(op: &SerializedBinaryOp) -> BinaryOp {
     }
 }
 
-fn lower_expr(se: &SerializedExpr, callable: &CallableSignatures) -> HirExpr {
+fn lower_expr(
+    se: &SerializedExpr,
+    callable: &CallableSignatures,
+    locals: &HashMap<String, SerializedTy>,
+) -> HirExpr {
     match se {
         SerializedExpr::IntLit(val) => HirExpr {
             kind: HirExprKind::IntLit(*val),
@@ -482,14 +510,14 @@ fn lower_expr(se: &SerializedExpr, callable: &CallableSignatures) -> HirExpr {
         },
         SerializedExpr::Var(name) => HirExpr {
             kind: HirExprKind::Var(SmolStr::new(name)),
-            ty: Ty::Int, // Fallback scalar
+            ty: lower_ty(locals.get(name).expect("validated bridge variable is in scope")),
             span: Span::DUMMY,
         },
         SerializedExpr::Add(left, right) => HirExpr {
             kind: HirExprKind::Binary {
                 op: BinaryOp::Add,
-                lhs: Box::new(lower_expr(left, callable)),
-                rhs: Box::new(lower_expr(right, callable)),
+                lhs: Box::new(lower_expr(left, callable, locals)),
+                rhs: Box::new(lower_expr(right, callable, locals)),
             },
             ty: Ty::Int,
             span: Span::DUMMY,
@@ -497,8 +525,8 @@ fn lower_expr(se: &SerializedExpr, callable: &CallableSignatures) -> HirExpr {
         SerializedExpr::Binary { op, left, right } => HirExpr {
             kind: HirExprKind::Binary {
                 op: lower_binary_op(op),
-                lhs: Box::new(lower_expr(left, callable)),
-                rhs: Box::new(lower_expr(right, callable)),
+                lhs: Box::new(lower_expr(left, callable, locals)),
+                rhs: Box::new(lower_expr(right, callable, locals)),
             },
             ty: if matches!(
                 op,
@@ -549,7 +577,7 @@ fn lower_expr(se: &SerializedExpr, callable: &CallableSignatures) -> HirExpr {
             let lowered_args = final_args
                 .iter()
                 .map(|a| {
-                    let mut le = lower_expr(a, callable);
+                    let mut le = lower_expr(a, callable, locals);
                     if is_print {
                         le.ty = Ty::String;
                     }

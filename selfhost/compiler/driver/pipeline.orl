@@ -88,7 +88,8 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const sp_check = stmts.StmtPool {
         kind_tags: parsed_file.stmt_kind_tags,
         expr_ids: parsed_file.stmt_expr_ids,
-        target_names: parsed_file.stmt_target_names
+        target_names: parsed_file.stmt_target_names,
+        type_annotations: parsed_file.stmt_type_annotations
     }
     const exp_check = exprs.ExprPool {
         kind_tags: parsed_file.expr_kind_tags,
@@ -144,7 +145,8 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     const sp = stmts.StmtPool {
         kind_tags: parsed_file.stmt_kind_tags,
         expr_ids: parsed_file.stmt_expr_ids,
-        target_names: parsed_file.stmt_target_names
+        target_names: parsed_file.stmt_target_names,
+        type_annotations: parsed_file.stmt_type_annotations
     }
     const exp_pool = exprs.ExprPool {
         kind_tags: parsed_file.expr_kind_tags,
@@ -209,7 +211,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
                 stmt_idx = stmt_idx + 1
             end
         end
-        const body_json = if body_supported then bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt) else ""
+        const body_json = if body_supported then bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt, param_names, parsed_file.func_names, parsed_file.func_ret_tys, parsed_file.func_param_counts) else ""
         lists.push(l_ctx.module_ir.func_names, fn_name)
         lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
         lists.push(l_ctx.module_ir.func_param_jsons, su.join(param_jsons, ","))

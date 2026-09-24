@@ -5,8 +5,7 @@ import ori.string as su
 import selfhost.compiler.frontend.parse.parse_expr as exprs
 import selfhost.compiler.frontend.parse.parse_stmt as stmts
 
--- The v1 bridge currently gives every variable and arithmetic expression the
--- type Int. Validate its actual supported subset before serializing anything.
+-- Validate the bridge's supported scalar subset before serializing anything.
 public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
@@ -62,7 +61,7 @@ can_emit_local_call(pool: exprs.ExprPool, id: int, local_names: list[string], fu
     return false
 end
 
-public can_emit_bool_expr(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+public can_emit_bool_expr(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
     end
@@ -70,13 +69,24 @@ public can_emit_bool_expr(pool: exprs.ExprPool, id: int, local_names: list[strin
     if tag == 3
         return true
     end
+    if tag == 4
+        const name = lists.get(pool.str_vals, id)
+        var i = 0
+        while i < lists.len(bool_names)
+            if name == lists.get(bool_names, i)
+                return true
+            end
+            i = i + 1
+        end
+        return false
+    end
     if tag == 6
-        return can_emit_local_call(pool, id, local_names, func_names, func_ret_tys, func_param_counts, "bool")
+        return can_emit_local_call(pool, id, int_names, func_names, func_ret_tys, func_param_counts, "bool")
     end
     if tag == 5
         const op = lists.get(pool.str_vals, id)
         if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">="
-            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, func_names, func_ret_tys, func_param_counts)
+            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), int_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), int_names, func_names, func_ret_tys, func_param_counts)
         end
     end
     return false
@@ -104,18 +114,19 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
     if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
         return false
     end
-    const local_names: list[string] = []
+    const int_names: list[string] = []
+    const bool_names: list[string] = []
     var param_idx = 0
     while param_idx < lists.len(param_names)
         const name = lists.get(param_names, param_idx)
         var previous = 0
-        while previous < lists.len(local_names)
-            if name == lists.get(local_names, previous)
+        while previous < lists.len(int_names)
+            if name == lists.get(int_names, previous)
                 return false
             end
             previous = previous + 1
         end
-        lists.push(local_names, name)
+        lists.push(int_names, name)
         param_idx = param_idx + 1
     end
     var i = start_idx
@@ -124,31 +135,48 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
         const expr_id = lists.get(sp.expr_ids, i)
         if tag == 1 or tag == 2
             if tag == 1
-                if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                const is_int = can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts)
+                const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                if not is_int and not is_bool
+                    return false
+                end
+                const annotated = lists.get(sp.type_annotations, i)
+                if (is_int and annotated != "" and annotated != "int") or (is_bool and annotated != "" and annotated != "bool")
                     return false
                 end
                 const target = lists.get(sp.target_names, i)
                 var j = 0
-                while j < lists.len(local_names)
-                    if target == lists.get(local_names, j)
+                while j < lists.len(int_names)
+                    if target == lists.get(int_names, j)
                         return false
                     end
                     j = j + 1
                 end
-                lists.push(local_names, target)
+                j = 0
+                while j < lists.len(bool_names)
+                    if target == lists.get(bool_names, j)
+                        return false
+                    end
+                    j = j + 1
+                end
+                if is_int
+                    lists.push(int_names, target)
+                else
+                    lists.push(bool_names, target)
+                end
             elif ret_ty == "int"
-                if not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                if not can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
             elif ret_ty == "bool"
-                if not can_emit_bool_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+                if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
             else
                 return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, local_names, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         else
@@ -261,15 +289,32 @@ public emit_stmt_json(sp: stmts.StmtPool, pool: exprs.ExprPool, id: int) -> stri
     return "{\"Return\":{\"IntLit\":0}}"
 end
 
-public emit_range_stmts_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int) -> string
+public emit_range_stmts_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, param_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> string
     if start_idx >= end_idx or start_idx < 0 or end_idx > lists.len(sp.kind_tags)
         return ""
     end
 
     const stmts_out: list[string] = []
+    const int_names: list[string] = []
+    const bool_names: list[string] = []
+    var param_idx = 0
+    while param_idx < lists.len(param_names)
+        lists.push(int_names, lists.get(param_names, param_idx))
+        param_idx = param_idx + 1
+    end
     var i = start_idx
     while i < end_idx
-        const s = emit_stmt_json(sp, pool, i)
+        var s = emit_stmt_json(sp, pool, i)
+        if lists.get(sp.kind_tags, i) == 1
+            const expr_id = lists.get(sp.expr_ids, i)
+            const target = lists.get(sp.target_names, i)
+            if can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                s = "{\"Let\":{\"name\":\"" + target + "\",\"ty\":\"Bool\",\"value\":" + emit_expr_json(pool, expr_id) + "}}"
+                lists.push(bool_names, target)
+            else
+                lists.push(int_names, target)
+            end
+        end
         lists.push(stmts_out, s)
         i = i + 1
     end

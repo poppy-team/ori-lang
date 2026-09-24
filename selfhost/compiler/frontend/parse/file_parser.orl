@@ -33,6 +33,7 @@ public struct ParsedFile
     stmt_kind_tags: list[int]
     stmt_expr_ids: list[int]
     stmt_target_names: list[string]
+    stmt_type_annotations: list[string]
     expr_kind_tags: list[int]
     expr_left_ids: list[int]
     expr_right_ids: list[int]
@@ -247,6 +248,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
         stmt_kind_tags: sp.kind_tags,
         stmt_expr_ids: sp.expr_ids,
         stmt_target_names: sp.target_names,
+        stmt_type_annotations: sp.type_annotations,
         expr_kind_tags: pool.kind_tags,
         expr_left_ids: pool.left_ids,
         expr_right_ids: pool.right_ids,
