@@ -371,6 +371,8 @@ public next_token(lex: Lexer) -> NextOut
             return NextOut { token: some(tok.Token { kind: tok.TokenKind.SlashEq, span: span }), next: st.next }
         end
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.Slash, span: span }), next: cur }
+    elif ch == 37 -- '%'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Percent, span: span }), next: cur }
     elif ch == 43 -- '+'
         if peek_byte(cur) == 61 -- '+='
             const st = advance_byte(cur)
@@ -421,6 +423,15 @@ public next_token(lex: Lexer) -> NextOut
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.Caret, span: span }), next: cur }
     elif ch == 126 -- '~'
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.Tilde, span: span }), next: cur }
+    elif ch == 33 -- '!'
+        if peek_byte(cur) == 61 -- '!='
+            const after = advance_byte(cur).next
+            const ne_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.BangEq, span: ne_span }), next: after }
+        end
     elif ch == 60
         if peek_byte(cur) == 60 -- '<<'
             const shl_step = advance_byte(cur)
@@ -492,7 +503,9 @@ public next_token(lex: Lexer) -> NextOut
         return NextOut { token: some(tok.Token { kind: tok.TokenKind.Eq, span: span }), next: cur }
     end
 
-    return NextOut { token: none, next: cur }
+    -- Unknown bytes must remain visible to the parser. Discarding one can
+    -- turn an invalid program into a different, executable program.
+    return NextOut { token: some(tok.Token { kind: tok.TokenKind.Invalid, span: span }), next: cur }
 end
 
 public tokenize_all(source: string) -> list[tok.Token]

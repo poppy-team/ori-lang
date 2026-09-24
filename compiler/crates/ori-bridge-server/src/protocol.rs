@@ -57,6 +57,8 @@ pub enum SerializedBinaryOp {
     Mul,
     Div,
     Mod,
+    And,
+    Or,
     Eq,
     Ne,
     Lt,
@@ -80,6 +82,11 @@ pub enum SerializedExpr {
     Call {
         callee: String,
         args: Vec<SerializedExpr>,
+    },
+    IfExpr {
+        cond: Box<SerializedExpr>,
+        then_expr: Box<SerializedExpr>,
+        else_expr: Box<SerializedExpr>,
     },
 }
 

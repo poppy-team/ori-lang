@@ -20,6 +20,11 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   native module. The bootstrap gate compares these cases with Stage 0. Full
   self-compilation still needs collections, generics, enum patterns, string
   interpolation, and their standard library/runtime operations.
+- The parser now retains generic and qualified type signatures, handles
+  inline `if` expressions with scalar branches, and keeps the following
+  declarations in scope. The scalar bridge also preserves `%`, `and`, `or`,
+  and `!=`. Unknown source bytes produce an invalid token so code generation
+  refuses the input instead of discarding it.
 - Stage 1 and the bridge now preserve `bool` local bindings and Boolean
   variable reads, including an explicitly annotated binding. A new bootstrap
   fixture compares native execution with Stage 0 and checks the `Bool` HIR

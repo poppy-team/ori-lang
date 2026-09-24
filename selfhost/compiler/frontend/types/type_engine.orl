@@ -67,6 +67,13 @@ public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_n
             end
             fn_idx = fn_idx + 1
         end
+    elif tag == 11
+        const condition_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        const then_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+        const else_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.third_ids, id), func_names, func_ret_tys)
+        if condition_ty == 3 and then_ty == else_ty
+            return then_ty
+        end
     end
     return 0
 end

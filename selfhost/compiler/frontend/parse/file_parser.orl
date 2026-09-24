@@ -26,6 +26,7 @@ public struct ParsedFile
     struct_is_public: list[int]
     enum_names: list[string]
     enum_is_public: list[int]
+    newtype_names: list[string]
     item_kinds: list[int]
     item_names: list[string]
     items: list[node.ItemNode]
@@ -40,6 +41,7 @@ public struct ParsedFile
     expr_kind_tags: list[int]
     expr_left_ids: list[int]
     expr_right_ids: list[int]
+    expr_third_ids: list[int]
     expr_str_vals: list[string]
     expr_call_arg_starts: list[int]
     expr_call_arg_counts: list[int]
@@ -71,6 +73,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
     const s_pub: list[int] = []
     const e_names: list[string] = []
     const e_pub: list[int] = []
+    const n_names: list[string] = []
     var mod_name = "main"
     var pending_public = false
     var codegen_complete = true
@@ -148,6 +151,21 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
             case none:
                 cur = dr.skip_to_sync(tokens, cur + 1)
             end
+        case Newtype:
+            codegen_complete = false
+            if cur + 1 < total
+                const name_token = lists.get(tokens, cur + 1)
+                match name_token.kind
+                case Ident(name):
+                    lists.push(n_names, name)
+                    cur = cur + 2
+                case else:
+                    cur = cur + 1
+                end
+            else
+                cur = cur + 1
+            end
+            pending_public = false
         case Public:
             pending_public = true
             cur = cur + 1
@@ -230,6 +248,21 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
     const empty_kinds: list[int] = []
     const empty_names: list[string] = []
     const expr_total = exprs.total_exprs(pool)
+    var stmt_idx = 0
+    while stmt_idx < lists.len(sp.kind_tags)
+        if lists.get(sp.kind_tags, stmt_idx) == 0
+            codegen_complete = false
+        end
+        stmt_idx = stmt_idx + 1
+    end
+    var expr_idx = 0
+    while expr_idx < expr_total
+        const tag = lists.get(pool.kind_tags, expr_idx)
+        if tag == 0 or (tag >= 7 and tag != 11)
+            codegen_complete = false
+        end
+        expr_idx = expr_idx + 1
+    end
 
     return ParsedFile {
         module_name: mod_name,
@@ -247,6 +280,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
         struct_is_public: s_pub,
         enum_names: e_names,
         enum_is_public: e_pub,
+        newtype_names: n_names,
         item_kinds: empty_kinds,
         item_names: empty_names,
         items: items,
@@ -261,6 +295,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
         expr_kind_tags: pool.kind_tags,
         expr_left_ids: pool.left_ids,
         expr_right_ids: pool.right_ids,
+        expr_third_ids: pool.third_ids,
         expr_str_vals: pool.str_vals,
         expr_call_arg_starts: pool.call_arg_starts,
         expr_call_arg_counts: pool.call_arg_counts,

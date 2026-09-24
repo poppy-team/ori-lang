@@ -6,7 +6,7 @@ import selfhost.compiler.frontend.parse.parse_expr as exprs
 import selfhost.compiler.frontend.parse.parse_stmt as stmts
 
 -- Validate the bridge's supported scalar subset before serializing anything.
-public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
     end
@@ -27,18 +27,21 @@ public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string
     end
     if tag == 5
         const op = lists.get(pool.str_vals, id)
-        if op != "+" and op != "-" and op != "*" and op != "/"
+        if op != "+" and op != "-" and op != "*" and op != "/" and op != "%"
             return false
         end
-        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, func_names, func_ret_tys, func_param_counts)
+        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
     if tag == 6
-        return can_emit_local_call(pool, id, local_names, func_names, func_ret_tys, func_param_counts, "int")
+        return can_emit_local_call(pool, id, local_names, bool_names, func_names, func_ret_tys, func_param_counts, "int")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.third_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
     return false
 end
 
-can_emit_local_call(pool: exprs.ExprPool, id: int, local_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], result_ty: string) -> bool
+can_emit_local_call(pool: exprs.ExprPool, id: int, local_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], result_ty: string) -> bool
     const callee = lists.get(pool.str_vals, id)
     var i = 0
     while i < lists.len(func_names)
@@ -54,7 +57,7 @@ can_emit_local_call(pool: exprs.ExprPool, id: int, local_names: list[string], fu
             end
             var arg_idx = 0
             while arg_idx < arg_count
-                if not can_emit_int_expr(pool, lists.get(pool.call_arg_ids, first_arg + arg_idx), local_names, func_names, func_ret_tys, func_param_counts)
+                if not can_emit_int_expr(pool, lists.get(pool.call_arg_ids, first_arg + arg_idx), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
                 arg_idx = arg_idx + 1
@@ -86,12 +89,18 @@ public can_emit_bool_expr(pool: exprs.ExprPool, id: int, int_names: list[string]
         return false
     end
     if tag == 6
-        return can_emit_local_call(pool, id, int_names, func_names, func_ret_tys, func_param_counts, "bool")
+        return can_emit_local_call(pool, id, int_names, bool_names, func_names, func_ret_tys, func_param_counts, "bool")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
     if tag == 5
         const op = lists.get(pool.str_vals, id)
+        if op == "and" or op == "or"
+            return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+        end
         if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">="
-            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), int_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), int_names, func_names, func_ret_tys, func_param_counts)
+            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
         end
     end
     return false
@@ -177,7 +186,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
         end
         if tag == 1 or tag == 2
             if tag == 1
-                const is_int = can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts)
+                const is_int = can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 if not is_int and not is_bool
                     return false
@@ -199,7 +208,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                     lists.push(mutable_names, target)
                 end
             elif ret_ty == "int"
-                if not can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts)
+                if not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
             elif ret_ty == "bool"
@@ -211,7 +220,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         elif tag == 4
@@ -241,7 +250,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 return false
             end
             if contains_name(int_names, target)
-                if not can_emit_int_expr(pool, expr_id, int_names, func_names, func_ret_tys, func_param_counts)
+                if not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
             elif contains_name(bool_names, target)
@@ -296,6 +305,12 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
             return "{\"Binary\":{\"op\":\"Mul\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
         elif op_str == "/"
             return "{\"Binary\":{\"op\":\"Div\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "%"
+            return "{\"Binary\":{\"op\":\"Mod\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "and"
+            return "{\"Binary\":{\"op\":\"And\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "or"
+            return "{\"Binary\":{\"op\":\"Or\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
         elif op_str == "=="
             return "{\"Binary\":{\"op\":\"Eq\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
         elif op_str == "!="
@@ -322,6 +337,11 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
             j = j + 1
         end
         return "{\"Call\":{\"callee\":\"" + callee + "\",\"args\":[" + su.join(arg_jsons, ",") + "]}}"
+    elif tag == 11
+        const cond_json = emit_expr_json(pool, lists.get(pool.left_ids, id))
+        const then_json = emit_expr_json(pool, lists.get(pool.right_ids, id))
+        const else_json = emit_expr_json(pool, lists.get(pool.third_ids, id))
+        return "{\"IfExpr\":{\"cond\":" + cond_json + ",\"then_expr\":" + then_json + ",\"else_expr\":" + else_json + "}}"
     end
 
     return "{\"IntLit\":0}"

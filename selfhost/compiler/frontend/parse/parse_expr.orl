@@ -8,6 +8,7 @@ public struct ExprPool
     kind_tags: list[int] -- 1=IntLit, 2=StrLit, 3=BoolLit, 4=Ident, 5=Binary, 6=Call, 7=EmptyList
     left_ids: list[int]
     right_ids: list[int]
+    third_ids: list[int] -- else branch of an inline if-expression
     str_vals: list[string]
     call_arg_starts: list[int]
     call_arg_counts: list[int]
@@ -18,6 +19,7 @@ public new_pool() -> ExprPool
     const empty_k: list[int] = []
     const empty_l: list[int] = []
     const empty_r: list[int] = []
+    const empty_third: list[int] = []
     const empty_s: list[string] = []
     const empty_starts: list[int] = []
     const empty_counts: list[int] = []
@@ -26,6 +28,7 @@ public new_pool() -> ExprPool
         kind_tags: empty_k,
         left_ids: empty_l,
         right_ids: empty_r,
+        third_ids: empty_third,
         str_vals: empty_s,
         call_arg_starts: empty_starts,
         call_arg_counts: empty_counts,
@@ -38,6 +41,7 @@ public alloc_expr_raw(pool: ExprPool, kind_tag: int, left: int, right: int, val:
     lists.push(pool.kind_tags, kind_tag)
     lists.push(pool.left_ids, left)
     lists.push(pool.right_ids, right)
+    lists.push(pool.third_ids, -1)
     lists.push(pool.str_vals, val)
     lists.push(pool.call_arg_starts, -1)
     lists.push(pool.call_arg_counts, 0)
@@ -143,6 +147,43 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
     case None:
         const id = alloc_expr_raw(pool, 0, -1, -1, "none")
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case If:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 0)
+        case some(cond):
+            if cond.next_cursor >= lists.len(tokens)
+                return none
+            end
+            const separator = lists.get(tokens, cond.next_cursor)
+            match separator.kind
+            case Then:
+                match parse_binary_with_min(tokens, cond.next_cursor + 1, pool, 0)
+                case some(yes):
+                    if yes.next_cursor >= lists.len(tokens)
+                        return none
+                    end
+                    const other = lists.get(tokens, yes.next_cursor)
+                    match other.kind
+                    case Else:
+                        match parse_binary_with_min(tokens, yes.next_cursor + 1, pool, 0)
+                        case some(no):
+                            const id = alloc_expr_raw(pool, 11, cond.expr_id, yes.expr_id, "if_expr")
+                            lists.set(pool.third_ids, id, no.expr_id)
+                            return some(ParseExprOut { expr_id: id, next_cursor: no.next_cursor })
+                        case none:
+                            return none
+                        end
+                    case else:
+                        return none
+                    end
+                case none:
+                    return none
+                end
+            case else:
+                return none
+            end
+        case none:
+            return none
+        end
     case Match:
         -- Match as expression: match scrutinee case ... end
         var m_cur = cursor + 1

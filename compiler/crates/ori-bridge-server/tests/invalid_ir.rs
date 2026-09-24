@@ -232,3 +232,15 @@ fn break_outside_loop_is_rejected_before_codegen() {
     assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
     assert!(!output.exists());
 }
+
+#[test]
+fn inline_if_with_non_boolean_condition_is_rejected() {
+    let (res, dir) = compile_with_expr(SerializedExpr::IfExpr {
+        cond: Box::new(SerializedExpr::IntLit(1)),
+        then_expr: Box::new(SerializedExpr::IntLit(42)),
+        else_expr: Box::new(SerializedExpr::IntLit(0)),
+    });
+    assert_eq!(res.status, "error");
+    assert!(res.error.unwrap().message.contains("condition must be bool"));
+    assert!(!dir.path().join("invalid.o").exists());
+}

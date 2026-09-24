@@ -341,8 +341,8 @@ ORI
 echo 'Stage 0/1: nested if/else, while, mutable assignment'
 "$stage0" compile "$work/control-flow.orl" -o "$work/control-flow-stage0"
 "$work/ori-stage1" compile "$work/control-flow.orl" -o "$work/control-flow-stage1"
-"$work/control-flow-stage0"
-"$work/control-flow-stage1"
+timeout 10s "$work/control-flow-stage0"
+timeout 10s "$work/control-flow-stage1"
 python3 - "$work/control-flow-stage1.tmp.o.req.json" <<'PY'
 import json
 import sys
@@ -412,6 +412,75 @@ grep -q 'bind.import_cycle' "$work/cycle_root.log"
 grep -q 'bind.import_not_found' "$work/missing_leaf.log"
 grep -q 'bind.private_import' "$work/private_member.log"
 
+# A generic signature and an inline if-expression have no block End of their
+# own. Recovery must still see the next function and refuse unsupported IR.
+cat > "$work/generic-signature.orl" <<'ORI'
+module bootstrap.generic_signature
+helper(values: list[int]) -> int
+    const choice = if true then 1 else 0
+    return choice
+end
+main() -> int
+    return 0
+end
+ORI
+if "$work/ori-stage1" compile "$work/generic-signature.orl" -o "$work/generic-signature.bin" > "$work/generic-signature.log" 2>&1; then
+    echo 'Stage 1 emitted an unsupported generic signature' >&2
+    exit 1
+fi
+grep -q 'PIPELINE_PARSED: items=2' "$work/generic-signature.log"
+grep -q 'bridge.unsupported_ir' "$work/generic-signature.log"
+
+cat > "$work/inline-if.orl" <<'ORI'
+module bootstrap.inline_if
+main() -> int
+    const ready = 2 > 1
+    const answer = if ready then 42 else 0
+    return answer - 42
+end
+ORI
+echo 'Stage 0/1: inline if-expression with a boolean local'
+"$stage0" compile "$work/inline-if.orl" -o "$work/inline-if-stage0"
+"$work/ori-stage1" compile "$work/inline-if.orl" -o "$work/inline-if-stage1"
+"$work/inline-if-stage0"
+"$work/inline-if-stage1"
+python3 - "$work/inline-if-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+assert body[1]["Let"]["value"]["IfExpr"] == {
+    "cond": {"Var": "ready"},
+    "then_expr": {"IntLit": 42},
+    "else_expr": {"IntLit": 0},
+}, body
+PY
+
+cat > "$work/logical-mod.orl" <<'ORI'
+module bootstrap.logical_mod
+main() -> int
+    const ready = (7 % 3 == 1) and (4 > 3)
+    return if ready or false then 0 else 1
+end
+ORI
+echo 'Stage 0/1: modulo and Boolean operators in a grouped expression'
+"$stage0" compile "$work/logical-mod.orl" -o "$work/logical-mod-stage0"
+"$work/ori-stage1" compile "$work/logical-mod.orl" -o "$work/logical-mod-stage1"
+"$work/logical-mod-stage0"
+"$work/logical-mod-stage1"
+python3 - "$work/logical-mod-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+expr = body[0]["Let"]["value"]["Binary"]
+assert expr["op"] == "And", body
+assert expr["left"]["Binary"]["left"]["Binary"]["op"] == "Mod", body
+assert body[1]["Return"]["IfExpr"]["cond"]["Binary"]["op"] == "Or", body
+PY
+
 # Every source construct that the flat IR cannot express must fail before
 # invoking the bridge; otherwise a successful binary could change semantics.
 assert_unsupported() {
@@ -468,6 +537,12 @@ cat > "$work/unknown-body.orl" <<'ORI'
 module bootstrap.unknown_body
 main()
     @
+end
+ORI
+cat > "$work/invalid-byte.orl" <<'ORI'
+module bootstrap.invalid_byte
+main() -> int
+    return 4 # 2
 end
 ORI
 cat > "$work/missing-end.orl" <<'ORI'
@@ -598,7 +673,7 @@ main() -> int
 end
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity missing-parameter-argument mistyped-parameter-argument unsupported-parameter-type missing-parameter-colon leading-call-comma; do
+for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body invalid-byte missing-end unknown-call wrong-call-arity missing-parameter-argument mistyped-parameter-argument unsupported-parameter-type missing-parameter-colon leading-call-comma; do
     assert_unsupported "$name"
 done
 

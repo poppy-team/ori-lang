@@ -156,6 +156,7 @@ check_scoped_expr(
     kind_tags: list[int],
     left_ids: list[int],
     right_ids: list[int],
+    third_ids: list[int],
     names: list[string],
     arg_starts: list[int],
     arg_counts: list[int],
@@ -187,15 +188,19 @@ check_scoped_expr(
         case none:
         end
     elif tag == 5
-        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, arg_starts, arg_counts, arg_ids, lists.get(left_ids, expr_id), visible_locals)
-        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, arg_starts, arg_counts, arg_ids, lists.get(right_ids, expr_id), visible_locals)
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(left_ids, expr_id), visible_locals)
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(right_ids, expr_id), visible_locals)
     elif tag == 6
         const arg_start = lists.get(arg_starts, expr_id)
         var arg_idx = 0
         while arg_idx < lists.get(arg_counts, expr_id)
-            check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, names, arg_starts, arg_counts, arg_ids, lists.get(arg_ids, arg_start + arg_idx), visible_locals)
+            check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(arg_ids, arg_start + arg_idx), visible_locals)
             arg_idx = arg_idx + 1
         end
+    elif tag == 11
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(left_ids, expr_id), visible_locals)
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(right_ids, expr_id), visible_locals)
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(third_ids, expr_id), visible_locals)
     end
 end
 
@@ -205,6 +210,7 @@ public check_function_scope(
     expr_kinds: list[int],
     expr_lefts: list[int],
     expr_rights: list[int],
+    expr_thirds: list[int],
     expr_names: list[string],
     expr_arg_starts: list[int],
     expr_arg_counts: list[int],
@@ -224,7 +230,7 @@ public check_function_scope(
         lists.push(visible_locals, lists.get(param_names, param_idx))
         param_idx = param_idx + 1
     end
-    check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, first_stmt, last_stmt, visible_locals)
+    check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, first_stmt, last_stmt, visible_locals)
 end
 
 copy_visible_names(names: list[string]) -> list[string]
@@ -237,20 +243,20 @@ copy_visible_names(names: list[string]) -> list[string]
     return copy
 end
 
-check_scope_block(dmap: DefMap, sink: ds.DiagnosticSink, expr_kinds: list[int], expr_lefts: list[int], expr_rights: list[int], expr_names: list[string], expr_arg_starts: list[int], expr_arg_counts: list[int], expr_arg_ids: list[int], stmt_kinds: list[int], stmt_exprs: list[int], stmt_names: list[string], stmt_branches: list[int], stmt_ends: list[int], first_stmt: int, last_stmt: int, visible_locals: list[string])
+check_scope_block(dmap: DefMap, sink: ds.DiagnosticSink, expr_kinds: list[int], expr_lefts: list[int], expr_rights: list[int], expr_thirds: list[int], expr_names: list[string], expr_arg_starts: list[int], expr_arg_counts: list[int], expr_arg_ids: list[int], stmt_kinds: list[int], stmt_exprs: list[int], stmt_names: list[string], stmt_branches: list[int], stmt_ends: list[int], first_stmt: int, last_stmt: int, visible_locals: list[string])
     var i = first_stmt
     while i < last_stmt
-        check_scoped_expr(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, lists.get(stmt_exprs, i), visible_locals)
+        check_scoped_expr(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, lists.get(stmt_exprs, i), visible_locals)
         const tag = lists.get(stmt_kinds, i)
         const subtree_end = lists.get(stmt_ends, i)
         if tag == 1
             lists.push(visible_locals, lists.get(stmt_names, i))
         elif tag == 4
             const else_start = lists.get(stmt_branches, i)
-            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, i + 1, else_start, copy_visible_names(visible_locals))
-            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, else_start, subtree_end, copy_visible_names(visible_locals))
+            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, i + 1, else_start, copy_visible_names(visible_locals))
+            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, else_start, subtree_end, copy_visible_names(visible_locals))
         elif tag == 5
-            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, i + 1, subtree_end, copy_visible_names(visible_locals))
+            check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, i + 1, subtree_end, copy_visible_names(visible_locals))
         end
         if subtree_end <= i
             i = i + 1

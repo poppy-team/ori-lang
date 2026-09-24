@@ -82,6 +82,50 @@ find_function(catalog: ModuleCatalog, name: string) -> int
     return -1
 end
 
+known_nominal_type(catalog: ModuleCatalog, module_path: string, member: string) -> bool
+    var i = 0
+    while i < lists.len(catalog.files)
+        const file = lists.get(catalog.files, i)
+        if file.module_name == module_path
+            var j = 0
+            while j < lists.len(file.newtype_names)
+                if member == lists.get(file.newtype_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+            j = 0
+            while j < lists.len(file.struct_names)
+                if member == lists.get(file.struct_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+            j = 0
+            while j < lists.len(file.enum_names)
+                if member == lists.get(file.enum_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+        end
+        i = i + 1
+    end
+    return false
+end
+
+module_complete(catalog: ModuleCatalog, module_path: string) -> bool
+    var i = 0
+    while i < lists.len(catalog.files)
+        const file = lists.get(catalog.files, i)
+        if file.module_name == module_path
+            return file.codegen_complete
+        end
+        i = i + 1
+    end
+    return false
+end
+
 -- Every qualified call must name a public member of a directly imported
 -- module. Local calls in imported modules acquire their canonical prefix.
 rewrite_calls(catalog: ModuleCatalog, sink: ds.DiagnosticSink)
@@ -109,7 +153,9 @@ rewrite_calls(catalog: ModuleCatalog, sink: ds.DiagnosticSink)
                             const canonical = path + "." + member
                             const def_index = find_function(catalog, canonical)
                             if def_index == -1
-                                ds.emit_error(sink, "name.undefined", "unknown imported function: " + canonical, "export a function with this name")
+                                if module_complete(catalog, path) and not known_nominal_type(catalog, path, member)
+                                    ds.emit_error(sink, "name.undefined", "unknown imported function: " + canonical, "export a function with this name")
+                                end
                             elif lists.get(catalog.func_public, def_index) != 1
                                 ds.emit_error(sink, "bind.private_import", "function is private: " + canonical, "declare the function public")
                             else
@@ -153,6 +199,7 @@ public append_imported_functions(catalog: ModuleCatalog, module_ir: hn.HirModule
             kind_tags: parsed.expr_kind_tags,
             left_ids: parsed.expr_left_ids,
             right_ids: parsed.expr_right_ids,
+            third_ids: parsed.expr_third_ids,
             str_vals: parsed.expr_str_vals,
             call_arg_starts: parsed.expr_call_arg_starts,
             call_arg_counts: parsed.expr_call_arg_counts,
@@ -195,7 +242,9 @@ public append_imported_functions(catalog: ModuleCatalog, module_ir: hn.HirModule
             param_offset = param_offset + count
             const first = lists.get(parsed.func_first_stmt_idx, fn_idx)
             const last = lists.get(parsed.func_last_stmt_idx, fn_idx)
-            te.check_function_statement_range_in_module(env, sink, sp, exp, first, last, ret_ty, catalog.func_names, catalog.func_ret_tys)
+            if parsed.codegen_complete
+                te.check_function_statement_range_in_module(env, sink, sp, exp, first, last, ret_ty, catalog.func_names, catalog.func_ret_tys)
+            end
             const body_ok = emitter.can_emit_range(sp, exp, first, last, ret_ty, io_alias, param_names, catalog.func_names, catalog.func_ret_tys, catalog.func_param_counts)
             if not body_ok
                 supported = false

@@ -14,6 +14,8 @@ An experimental compiler written in Ori lives under `selfhost/compiler/`. Its
 Stage 1 can compile a scalar subset through `ori-bridge-server`, including
 multiple `int` parameters, nested `if`/`else` and `while` blocks, mutable
 assignments, and transitive imports whose definitions fit the same subset.
+The scalar path also supports grouped and inline `if` expressions with
+integer or Boolean branches.
 It cannot yet compile itself: collections, enums, pattern matching, string
 interpolation, generic signatures, and broader standard library calls are
 still outside the bridge. The CI gate in `tools/qa/test_bootstrap_stages.sh` requires Stage 1 to

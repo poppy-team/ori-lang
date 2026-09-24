@@ -184,7 +184,8 @@ and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
 `Int`, `Float`, `Bool`, `String`, or `Void`. The supported statement shapes are
 `Let` (with mutability), `Assign`, `Return`, `Expr`, `If`, `While`, `Break`,
 and `Continue`; expressions are `IntLit`, `StrLit`, `BoolLit`, `Var`, `Add`,
-`Binary`, and `Call`. A built-in print call accepts zero or one string literal.
+`Binary`, `Call`, and scalar `IfExpr`. Arithmetic `%` and Boolean `and`/`or`
+have distinct operations and type validation. A built-in print call accepts zero or one string literal.
 Local calls with up to eight `Int` arguments and an `Int` or `Bool` return use the declared module signature,
 including forward calls. The bridge checks argument count and type before
 emitting an object. Calls requiring an unknown function signature are rejected
@@ -208,6 +209,8 @@ source it cannot represent: interpolated strings, floats, unsupported argument
 types, non-IO method calls, unknown body tokens, user-defined type declarations, top-level
 constants, and incomplete function bodies. A `check` result does not imply
 that this restricted code generation path supports the checked program.
+Generic and qualified type signatures are preserved for declaration discovery
+but cannot yet be lowered through the scalar bridge.
 The current print path accepts `io.println` only when `io` is an import alias
 for `ori.io`. The imported namespace takes precedence over a same-named local
 binding; arbitrary receiver names and renamed aliases remain

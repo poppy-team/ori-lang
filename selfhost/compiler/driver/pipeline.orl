@@ -84,6 +84,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         kind_tags: parsed_file.expr_kind_tags,
         left_ids: parsed_file.expr_left_ids,
         right_ids: parsed_file.expr_right_ids,
+        third_ids: parsed_file.expr_third_ids,
         str_vals: parsed_file.expr_str_vals,
         call_arg_starts: parsed_file.expr_call_arg_starts,
         call_arg_counts: parsed_file.expr_call_arg_counts,
@@ -110,7 +111,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
             param_idx = param_idx + 1
         end
         checked_param_offset = checked_param_offset + param_count
-        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_str_vals, parsed_file.expr_call_arg_starts, parsed_file.expr_call_arg_counts, parsed_file.expr_call_arg_ids, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, parsed_file.stmt_branch_starts, parsed_file.stmt_subtree_ends, first_stmt, last_stmt, param_names)
+        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_third_ids, parsed_file.expr_str_vals, parsed_file.expr_call_arg_starts, parsed_file.expr_call_arg_counts, parsed_file.expr_call_arg_ids, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, parsed_file.stmt_branch_starts, parsed_file.stmt_subtree_ends, first_stmt, last_stmt, param_names)
         te.check_function_statement_range_in_module(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty, catalog.func_names, catalog.func_ret_tys)
         checked_bindings = checked_bindings + te.binding_count(checker_env)
         checked_functions = checked_functions + 1
@@ -148,6 +149,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         kind_tags: parsed_file.expr_kind_tags,
         left_ids: parsed_file.expr_left_ids,
         right_ids: parsed_file.expr_right_ids,
+        third_ids: parsed_file.expr_third_ids,
         str_vals: parsed_file.expr_str_vals,
         call_arg_starts: parsed_file.expr_call_arg_starts,
         call_arg_counts: parsed_file.expr_call_arg_counts,

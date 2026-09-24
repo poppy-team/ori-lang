@@ -338,8 +338,28 @@ fn validate_expr(
             }
             Ok(SerializedTy::Void)
         }
+        SerializedExpr::IfExpr { cond, then_expr, else_expr } => {
+            if validate_expr(cond, locals, callable)? != SerializedTy::Bool {
+                return Err("if-expression condition must be bool".to_string());
+            }
+            let then_ty = validate_expr(then_expr, locals, callable)?;
+            if then_ty != validate_expr(else_expr, locals, callable)?
+                || !matches!(&then_ty, SerializedTy::Int | SerializedTy::Bool)
+            {
+                return Err("if-expression branches must have the same supported type".to_string());
+            }
+            Ok(then_ty)
+        }
         SerializedExpr::Add(l, r) => validate_int_pair(l, r, locals, callable),
         SerializedExpr::Binary { op, left, right } => {
+            if matches!(op, SerializedBinaryOp::And | SerializedBinaryOp::Or) {
+                if validate_expr(left, locals, callable)? != SerializedTy::Bool
+                    || validate_expr(right, locals, callable)? != SerializedTy::Bool
+                {
+                    return Err("logical operands must be bool".to_string());
+                }
+                return Ok(SerializedTy::Bool);
+            }
             validate_int_pair(left, right, locals, callable)?;
             if matches!(
                 op,
@@ -531,6 +551,8 @@ fn lower_binary_op(op: &SerializedBinaryOp) -> BinaryOp {
         SerializedBinaryOp::Mul => BinaryOp::Mul,
         SerializedBinaryOp::Div => BinaryOp::Div,
         SerializedBinaryOp::Mod => BinaryOp::Rem,
+        SerializedBinaryOp::And => BinaryOp::And,
+        SerializedBinaryOp::Or => BinaryOp::Or,
         SerializedBinaryOp::Eq => BinaryOp::Eq,
         SerializedBinaryOp::Ne => BinaryOp::Ne,
         SerializedBinaryOp::Lt => BinaryOp::Lt,
@@ -584,6 +606,8 @@ fn lower_expr(
             ty: if matches!(
                 op,
                 SerializedBinaryOp::Eq
+                    | SerializedBinaryOp::And
+                    | SerializedBinaryOp::Or
                     | SerializedBinaryOp::Ne
                     | SerializedBinaryOp::Lt
                     | SerializedBinaryOp::Le
@@ -655,5 +679,18 @@ fn lower_expr(
                 span: Span::DUMMY,
             }
         },
+        SerializedExpr::IfExpr { cond, then_expr, else_expr } => {
+            let then_lowered = lower_expr(then_expr, callable, locals);
+            let ty = then_lowered.ty.clone();
+            HirExpr {
+                kind: HirExprKind::IfExpr {
+                    cond: Box::new(lower_expr(cond, callable, locals)),
+                    then: Box::new(then_lowered),
+                    else_: Box::new(lower_expr(else_expr, callable, locals)),
+                },
+                ty,
+                span: Span::DUMMY,
+            }
+        }
     }
 }

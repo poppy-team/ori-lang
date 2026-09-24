@@ -15,6 +15,30 @@ public new_recovery() -> RecoveryPoint
     return RecoveryPoint { sync_tokens: sync }
 end
 
+-- An inline `if condition then a else b` has no closing `end`.
+-- Its leading token follows an expression introducer. Treating it as a
+-- block would swallow the declarations after the enclosing function.
+inline_if_at(tokens: list[tok.Token], cursor: int) -> bool
+    if cursor <= 0
+        return false
+    end
+    const previous = lists.get(tokens, cursor - 1)
+    match previous.kind
+    case Eq: return true
+    case Comma: return true
+    case Return: return true
+    case LParen: return true
+    case Then: return true
+    case Else: return true
+    case Plus: return true
+    case Minus: return true
+    case Star: return true
+    case Slash: return true
+    case Colon: return true
+    case else: return false
+    end
+end
+
 public skip_to_sync(tokens: list[tok.Token], cursor: int) -> int
     var cur = cursor
     const total = lists.len(tokens)
@@ -27,7 +51,9 @@ public skip_to_sync(tokens: list[tok.Token], cursor: int) -> int
             depth = depth - 1
             cur = cur + 1
         case If:
-            depth = depth + 1
+            if not inline_if_at(tokens, cur)
+                depth = depth + 1
+            end
             cur = cur + 1
         case While:
             depth = depth + 1

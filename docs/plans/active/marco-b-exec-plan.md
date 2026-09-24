@@ -86,8 +86,12 @@ started: 2026-09-07
 > e descobre imports transitivos com detecção de ciclos e visibilidade de
 > funções. A requisição local contém as definições de dois módulos importados
 > e preserva o corpo de um laço aninhado. A execução nativa desses novos casos
-> ainda depende da próxima run de CI. O frontend ainda não representa toda a
-> linguagem usada pelo próprio compilador; stage2 e stage3 não foram gerados.
+> passou na execução 205, incluindo os testes negativos e a ligação de dois
+> imports transitivos. O stage1 analisou 152 tokens do `main.orl` e parou em
+> assinaturas e expressões não representadas pela bridge. A revisão posterior
+> recupera assinaturas genéricas/qualificadas e `if` inline, preserva `%`,
+> `and`, `or` e bytes inválidos. A autocompilação ainda recusa o IR não
+> representado; stage2 e stage3 não foram gerados.
 
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
