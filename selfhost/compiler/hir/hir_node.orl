@@ -53,17 +53,20 @@ public struct HirModule
     ns_name: string
     func_names: list[string]
     func_ret_tys: list[string]
+    func_param_jsons: list[string]
     func_body_jsons: list[string]
 end
 
 public new_hir_module(name: string) -> HirModule
     const f_names: list[string] = []
     const f_rets: list[string] = []
+    const f_params: list[string] = []
     const f_bodies: list[string] = []
     return HirModule {
         ns_name: name,
         func_names: f_names,
         func_ret_tys: f_rets,
+        func_param_jsons: f_params,
         func_body_jsons: f_bodies
     }
 end

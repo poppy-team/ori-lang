@@ -52,7 +52,7 @@ jobs:
 
       - name: Test experimental bridge protocol and invalid IR
         if: matrix.name == 'linux-gnu'
-        run: cargo test -p ori-bridge-server --test bridge_tests --test invalid_ir --locked
+        run: cargo test -p ori-bridge-server --test bridge_tests --test compile_tests --test invalid_ir --locked
 
       - name: Configure Windows GNU linker
         if: matrix.name == 'windows-gnu'

@@ -231,6 +231,47 @@ assert funcs[1]["body_stmts"][0]["Return"] == {
 assert funcs[2]["body_stmts"][1]["Return"]["Binary"]["op"] == "Eq", funcs
 PY
 
+cat > "$work/typed-parameter.orl" <<'ORI'
+module bootstrap.typed_parameter
+import ori.io as io
+main() -> int
+    const value = answer(42)
+    ready(value)
+    io.println("typed parameter executed")
+    return value - 42
+end
+answer(value: int) -> int
+    return value
+end
+ready(value: int) -> bool
+    return value == 42
+end
+ORI
+echo 'Stage 0/1: forward integer and boolean calls with typed parameters'
+"$stage0" compile "$work/typed-parameter.orl" -o "$work/typed-parameter-stage0"
+"$work/ori-stage1" compile "$work/typed-parameter.orl" -o "$work/typed-parameter-stage1"
+"$work/typed-parameter-stage0" > "$work/typed-parameter-stage0.stdout"
+"$work/typed-parameter-stage1" > "$work/typed-parameter-stage1.stdout"
+cmp "$work/typed-parameter-stage0.stdout" "$work/typed-parameter-stage1.stdout"
+python3 - "$work/typed-parameter-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert [f["params"] for f in funcs] == [
+    [], [{"name": "value", "ty": "Int"}], [{"name": "value", "ty": "Int"}]
+], funcs
+assert funcs[0]["body_stmts"][0]["Let"]["value"] == {
+    "Call": {"callee": "answer", "args": [{"IntLit": 42}]}
+}, funcs
+assert funcs[0]["body_stmts"][1]["Expr"] == {
+    "Call": {"callee": "ready", "args": [{"Var": "value"}]}
+}, funcs
+assert funcs[1]["body_stmts"][0]["Return"] == {"Var": "value"}, funcs
+assert funcs[2]["return_ty"] == "Bool", funcs
+PY
+
 # The imported namespace remains a module even when a local binding has the
 # same spelling. Compare the actual output against the reference compiler.
 cat > "$work/shadowed-io.orl" <<'ORI'
@@ -325,6 +366,50 @@ answer() -> int
     return 42
 end
 ORI
+cat > "$work/missing-parameter-argument.orl" <<'ORI'
+module bootstrap.missing_parameter_argument
+main() -> int
+    return answer()
+end
+answer(value: int) -> int
+    return value
+end
+ORI
+cat > "$work/mistyped-parameter-argument.orl" <<'ORI'
+module bootstrap.mistyped_parameter_argument
+main() -> int
+    return answer(true)
+end
+answer(value: int) -> int
+    return value
+end
+ORI
+cat > "$work/unsupported-parameter-type.orl" <<'ORI'
+module bootstrap.unsupported_parameter_type
+main()
+end
+identity(value: bool) -> bool
+    return value
+end
+ORI
+cat > "$work/missing-parameter-colon.orl" <<'ORI'
+module bootstrap.missing_parameter_colon
+main() -> int
+    return answer(42)
+end
+answer(value int) -> int
+    return value
+end
+ORI
+cat > "$work/leading-call-comma.orl" <<'ORI'
+module bootstrap.leading_call_comma
+main() -> int
+    return answer(, 42)
+end
+answer(value: int) -> int
+    return value
+end
+ORI
 cat > "$work/wrong-call-return.orl" <<'ORI'
 module bootstrap.wrong_call_return
 main() -> int
@@ -365,6 +450,15 @@ helper() -> int
     return secret
 end
 ORI
+cat > "$work/cross-function-parameter.orl" <<'ORI'
+module bootstrap.cross_function_parameter
+main() -> int
+    return secret
+end
+helper(secret: int) -> int
+    return secret
+end
+ORI
 cat > "$work/early-use.orl" <<'ORI'
 module bootstrap.early_use
 main() -> int
@@ -374,7 +468,7 @@ main() -> int
 end
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity; do
+for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body missing-end unknown-call wrong-call-arity missing-parameter-argument mistyped-parameter-argument unsupported-parameter-type missing-parameter-colon leading-call-comma; do
     assert_unsupported "$name"
 done
 
@@ -396,7 +490,7 @@ done
 # A module-wide symbol table must not expose another function's local binding
 # to check or compile. The reference frontend reports name.undefined here.
 echo 'Stage 1: local bindings stay within their function and declaration order'
-for name in cross-function-binding early-use; do
+for name in cross-function-binding cross-function-parameter early-use; do
     if "$work/ori-stage1" check "$work/$name.orl" > "$work/$name.check.log" 2>&1; then
         echo "Stage 1 accepted an out-of-scope binding: $name" >&2
         exit 1

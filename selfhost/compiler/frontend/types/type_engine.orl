@@ -56,15 +56,13 @@ public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_n
         const left_id = lists.get(pool.left_ids, id)
         return infer_expr_tag_in_env(env, pool, left_id, func_names, func_ret_tys)
     elif tag == 6
-        if lists.get(pool.left_ids, id) == -1
-            const callee = lists.get(pool.str_vals, id)
-            var fn_idx = 0
-            while fn_idx < lists.len(func_names)
-                if callee == lists.get(func_names, fn_idx)
-                    return type_str_to_tag(lists.get(func_ret_tys, fn_idx))
-                end
-                fn_idx = fn_idx + 1
+        const callee = lists.get(pool.str_vals, id)
+        var fn_idx = 0
+        while fn_idx < lists.len(func_names)
+            if callee == lists.get(func_names, fn_idx)
+                return type_str_to_tag(lists.get(func_ret_tys, fn_idx))
             end
+            fn_idx = fn_idx + 1
         end
     end
     return 0

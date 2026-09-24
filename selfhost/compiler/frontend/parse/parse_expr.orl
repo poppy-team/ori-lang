@@ -173,6 +173,7 @@ parse_call(tokens: list[tok.Token], cursor: int, pool: ExprPool, fn_name: string
     var cur = cursor + 2 -- Skip ident and '('
     var first_arg_id = -1
     var arg_count = 0
+    var expecting_arg = true
     while cur < lists.len(tokens)
         const t = lists.get(tokens, cur)
         match t.kind
@@ -186,11 +187,19 @@ parse_call(tokens: list[tok.Token], cursor: int, pool: ExprPool, fn_name: string
                 alloc_expr_raw(pool, 6, first_arg_id, -1, owned_fn_name)
             return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
         case Comma:
+            if expecting_arg or arg_count == 0
+                return none
+            end
+            expecting_arg = true
             cur = cur + 1
         case else:
+            if not expecting_arg
+                return none
+            end
             match parse_primary(tokens, cur, pool)
             case some(out):
                 arg_count = arg_count + 1
+                expecting_arg = false
                 if first_arg_id == -1
                     first_arg_id = out.expr_id
                 end

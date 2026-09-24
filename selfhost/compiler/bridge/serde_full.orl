@@ -64,6 +64,7 @@ public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> strin
     while i < count
         const fname = lists.get(module_ir.func_names, i)
         const rtype = lists.get(module_ir.func_ret_tys, i)
+        const params = lists.get(module_ir.func_param_jsons, i)
         const body = lists.get(module_ir.func_body_jsons, i)
         var bridge_ret = "Void"
         if rtype == "int"
@@ -72,7 +73,7 @@ public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> strin
         if rtype == "bool"
             bridge_ret = "Bool"
         end
-        const fjson = f"{{\"name\":\"{fname}\",\"params\":[],\"return_ty\":\"{bridge_ret}\",\"body_stmts\":[{body}],\"is_public\":true}}"
+        const fjson = f"{{\"name\":\"{fname}\",\"params\":[{params}],\"return_ty\":\"{bridge_ret}\",\"body_stmts\":[{body}],\"is_public\":true}}"
         lists.push(funcs_json, fjson)
         i = i + 1
     end

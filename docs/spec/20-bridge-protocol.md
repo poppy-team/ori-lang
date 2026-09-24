@@ -12,7 +12,7 @@
 
 This chapter specifies the versioned framing protocol and data schema exchanged between the Ori self-hosted compiler frontend (`packages/compiler`) and the host code-generation bridge (`compiler/crates/ori-bridge-server`).
 
-**Implementation boundary (2026-09-23):** The process entry point currently
+**Implementation boundary (2026-09-24):** The process entry point currently
 accepts `--request-file <path>` containing an unframed JSON
 `CompileModuleRequest` and constructs the envelope itself. The framing helpers
 exist as library functions, but the self-host client does not use framed IPC.
@@ -180,14 +180,20 @@ and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
 `Int`, `Float`, `Bool`, `String`, or `Void`. The supported statement shapes are
 `Let`, `Return`, `Expr`, and `If`; expressions are `IntLit`, `StrLit`,
 `BoolLit`, `Var`, `Add`, `Binary`, and `Call`. A built-in print call accepts
-zero or one string literal. Calls requiring an unknown function signature are
-rejected with `bridge.unsupported_ir` before an object is emitted. No other
-call signature should be inferred as a zero-argument C extern.
+zero or one string literal. Local calls with no arguments, or one `Int`
+argument and an `Int` or `Bool` return, use the declared module signature,
+including forward calls. The bridge checks argument count and type before
+emitting an object. Calls requiring an unknown function signature are rejected
+with `bridge.unsupported_ir`; no external signature is inferred.
 The bridge additionally validates local integer bindings, return types,
 integer arithmetic, comparisons between integers (producing `Bool`),
 and Boolean `if` conditions. Undefined variables and non-integer variable use
-are rejected until typed lowering exists. The Ori client declines object emission when functions have
-parameters, unsupported return types or statements absent from its emitter.
+are rejected until typed lowering exists. The Ori client can emit zero-argument
+functions and functions with one `int` parameter; it preserves the parameter
+name, resolves it within its function, and accepts integer arguments for local
+calls. Parameters on `main`, other parameter types, more than one parameter,
+unsupported return types, and statements absent from its emitter prevent
+object emission.
 The client preserves the operator in integer `+`, `-`, `*`, and `/` expressions
 and recognizes `-> int` return signatures. The limited type check evaluates
 return expressions against each function's own signature. It must refuse code generation for

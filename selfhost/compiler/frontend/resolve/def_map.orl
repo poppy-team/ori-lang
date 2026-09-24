@@ -202,9 +202,15 @@ public check_function_scope(
     stmt_exprs: list[int],
     stmt_names: list[string],
     first_stmt: int,
-    last_stmt: int
+    last_stmt: int,
+    param_names: list[string]
 )
     const visible_locals: list[string] = []
+    var param_idx = 0
+    while param_idx < lists.len(param_names)
+        lists.push(visible_locals, lists.get(param_names, param_idx))
+        param_idx = param_idx + 1
+    end
     var i = first_stmt
     while i < last_stmt
         check_scoped_expr(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_names, lists.get(stmt_exprs, i), visible_locals)

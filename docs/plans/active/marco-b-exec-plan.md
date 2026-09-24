@@ -66,6 +66,13 @@ started: 2026-09-07
 > sem parâmetros, literais booleanos e comparações inteiras; bindings booleanos,
 > parâmetros e fluxo de controle ainda dependem de representação completa.
 
+> Revisão de 2026-09-24: o stage1 agora guarda nomes e tipos de parâmetros
+> por função e emite chamadas locais de um argumento `int`; a bridge valida
+> aridade/tipo e usa a assinatura ao baixar a HIR. O gate compara execução
+> nativa com stage0 e rejeita argumentos incompatíveis e referências fora do
+> escopo. Stage2/stage3 permanecem dependentes de estruturas de controle,
+> coleções, expressões compostas e ligação efetiva dos imports do compilador.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

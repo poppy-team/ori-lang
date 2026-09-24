@@ -12,6 +12,13 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 now preserves one `int` parameter per local function through its
+  parser, scope checks, type checks, and bridge payload. Local forward calls
+  pass one supported integer argument; the bridge validates argument types and
+  lowers the declared signature. The bootstrap gate compares a compiled
+  parameter call with Stage 0 and rejects wrong arguments and leaked bindings.
+  Full self-compilation still requires control flow, collections, imported
+  definitions, and other expression forms.
 - Stage 1 and the experimental bridge now preserve typed calls to local
   zero-argument functions returning `int`, including forward calls inside
   integer expressions. The bootstrap gate compares their native execution
@@ -34,7 +41,7 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   return type; the bootstrap gate covers both valid and invalid signatures.
 - The experimental Stage 1 now keeps `->` return signatures and binary
   operators and method receivers in its bridge payload. Unsupported interpolation,
-  call arguments, declarations and unparsed function tokens cause compilation to fail instead
+  unrepresentable call arguments, declarations and unparsed function tokens cause compilation to fail instead
   of emitting a program with silently omitted or substituted code. The
   bootstrap gate checks the serialized operators and negative cases. Its
   minimal print path requires `import ori.io as io`, with the import retaining

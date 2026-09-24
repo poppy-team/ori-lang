@@ -79,6 +79,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     end
     io.println(f"PIPELINE_IMPORTS_VALIDATED: count={import_idx}")
     dm.register_local_bindings(dmap, parsed_file.stmt_target_names)
+    dm.register_local_bindings(dmap, parsed_file.func_param_names)
     dm.pass2_resolve_idents_only(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_str_vals)
     io.println("PIPELINE_REFERENCES_RESOLVED")
     const sym_count = dm.total_defs(dmap)
@@ -97,12 +98,25 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
     }
     var checked_functions = 0
     var checked_bindings = 0
+    var checked_param_offset = 0
     while checked_functions < lists.len(parsed_file.func_names)
         const checker_env = te.new_env()
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, checked_functions)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, checked_functions)
         const target_ret_ty = lists.get(parsed_file.func_ret_tys, checked_functions)
-        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_str_vals, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, first_stmt, last_stmt)
+        const param_names: list[string] = []
+        const param_count = lists.get(parsed_file.func_param_counts, checked_functions)
+        var param_idx = 0
+        while param_idx < param_count
+            const param_name = lists.get(parsed_file.func_param_names, checked_param_offset + param_idx)
+            const param_ty = lists.get(parsed_file.func_param_tys, checked_param_offset + param_idx)
+            lists.push(param_names, param_name)
+            lists.push(checker_env.binding_names, param_name)
+            lists.push(checker_env.binding_ty_tags, te.type_str_to_tag(param_ty))
+            param_idx = param_idx + 1
+        end
+        checked_param_offset = checked_param_offset + param_count
+        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_str_vals, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, first_stmt, last_stmt, param_names)
         te.check_function_statement_range_in_module(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty, parsed_file.func_names, parsed_file.func_ret_tys)
         checked_bindings = checked_bindings + te.binding_count(checker_env)
         checked_functions = checked_functions + 1
@@ -141,19 +155,35 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
 
     const l_ctx = lo.new_lower_context(parsed_file.module_name)
     var k = 0
+    var param_offset = 0
     const fn_total = lists.len(parsed_file.func_names)
     var codegen_supported = fn_total > 0 and parsed_file.codegen_complete
     while k < fn_total
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
         const param_count = lists.get(parsed_file.func_param_counts, k)
-        if param_count != 0 or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "void")
+        if param_count > 1 or (fn_name == "main" and param_count != 0) or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "void")
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_SIGNATURE: {fn_name} params={param_count} return={fn_ret}")
         end
+        const param_names: list[string] = []
+        const param_jsons: list[string] = []
+        var param_idx = 0
+        while param_idx < param_count
+            const param_name = lists.get(parsed_file.func_param_names, param_offset + param_idx)
+            const param_ty = lists.get(parsed_file.func_param_tys, param_offset + param_idx)
+            if param_ty != "int"
+                codegen_supported = false
+                io.println(f"CODEGEN_UNSUPPORTED_PARAM_TYPE: {fn_name} {param_name}: {param_ty}")
+            end
+            lists.push(param_names, param_name)
+            lists.push(param_jsons, f"{{\"name\":\"{param_name}\",\"ty\":\"Int\"}}")
+            param_idx = param_idx + 1
+        end
+        param_offset = param_offset + param_count
         const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
         const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
-        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, io_alias, parsed_file.func_names, parsed_file.func_ret_tys, parsed_file.func_param_counts)
+        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, io_alias, param_names, parsed_file.func_names, parsed_file.func_ret_tys, parsed_file.func_param_counts)
         if not body_supported
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")
@@ -182,6 +212,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         const body_json = if body_supported then bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt) else ""
         lists.push(l_ctx.module_ir.func_names, fn_name)
         lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
+        lists.push(l_ctx.module_ir.func_param_jsons, su.join(param_jsons, ","))
         lists.push(l_ctx.module_ir.func_body_jsons, body_json)
         k = k + 1
     end

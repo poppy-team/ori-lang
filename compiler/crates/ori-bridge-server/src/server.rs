@@ -183,19 +183,27 @@ fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
     }
 }
 
-// Protocol v1 can lower calls with no arguments and a scalar result.
+// Protocol v1 can lower calls with zero or one Int argument and a scalar result.
 // Build the signature table before visiting bodies so forward calls work.
-fn callable_functions(module: &SerializedModule) -> HashMap<String, SerializedTy> {
+type CallableSignatures = HashMap<String, (Vec<SerializedTy>, SerializedTy)>;
+
+fn callable_functions(module: &SerializedModule) -> CallableSignatures {
     module
         .funcs
         .iter()
         .filter(|f| {
             f.name != "main"
                 && f.name != "println"
-                && f.params.is_empty()
+                && f.params.len() <= 1
+                && f.params.iter().all(|p| p.ty == SerializedTy::Int)
                 && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool)
         })
-        .map(|f| (f.name.clone(), f.return_ty.clone()))
+        .map(|f| {
+            (
+                f.name.clone(),
+                (f.params.iter().map(|p| p.ty.clone()).collect(), f.return_ty.clone()),
+            )
+        })
         .collect()
 }
 
@@ -225,7 +233,7 @@ fn validate_stmt(
     s: &SerializedStmt,
     locals: &mut HashMap<String, SerializedTy>,
     return_ty: &SerializedTy,
-    callable: &HashMap<String, SerializedTy>,
+    callable: &CallableSignatures,
 ) -> Result<(), String> {
     match s {
         SerializedStmt::Let { name, ty, value } => {
@@ -272,11 +280,19 @@ fn validate_stmt(
 fn validate_expr(
     e: &SerializedExpr,
     locals: &HashMap<String, SerializedTy>,
-    callable: &HashMap<String, SerializedTy>,
+    callable: &CallableSignatures,
 ) -> Result<SerializedTy, String> {
     match e {
         SerializedExpr::Call { callee, args } => {
-            if let Some(result_ty) = callable.get(callee).filter(|_| args.is_empty()) {
+            if let Some((param_tys, result_ty)) = callable.get(callee) {
+                if args.len() != param_tys.len() {
+                    return Err(format!("call to {callee} expects {} argument(s)", param_tys.len()));
+                }
+                for (arg, expected) in args.iter().zip(param_tys) {
+                    if validate_expr(arg, locals, callable)? != *expected {
+                        return Err(format!("call to {callee} has an argument with the wrong type"));
+                    }
+                }
                 return Ok(result_ty.clone());
             }
             if !matches!(callee.as_str(), "println" | "io.println" | "ori.io.println") {
@@ -323,7 +339,7 @@ fn validate_int_pair(
     left: &SerializedExpr,
     right: &SerializedExpr,
     locals: &HashMap<String, SerializedTy>,
-    callable: &HashMap<String, SerializedTy>,
+    callable: &CallableSignatures,
 ) -> Result<SerializedTy, String> {
     if validate_expr(left, locals, callable)? != SerializedTy::Int
         || validate_expr(right, locals, callable)? != SerializedTy::Int
@@ -347,7 +363,7 @@ fn lower_func(
     sf: &SerializedFunc,
     ns: &str,
     def_id: DefId,
-    callable: &HashMap<String, SerializedTy>,
+    callable: &CallableSignatures,
 ) -> HirFunc {
     let mut params = Vec::new();
     for p in &sf.params {
@@ -394,7 +410,7 @@ fn lower_func(
     }
 }
 
-fn lower_stmt(ss: &SerializedStmt, callable: &HashMap<String, SerializedTy>) -> HirStmt {
+fn lower_stmt(ss: &SerializedStmt, callable: &CallableSignatures) -> HirStmt {
     match ss {
         SerializedStmt::Let { name, ty, value } => HirStmt::Let {
             name: SmolStr::new(name),
@@ -447,7 +463,7 @@ fn lower_binary_op(op: &SerializedBinaryOp) -> BinaryOp {
     }
 }
 
-fn lower_expr(se: &SerializedExpr, callable: &HashMap<String, SerializedTy>) -> HirExpr {
+fn lower_expr(se: &SerializedExpr, callable: &CallableSignatures) -> HirExpr {
     match se {
         SerializedExpr::IntLit(val) => HirExpr {
             kind: HirExprKind::IntLit(*val),
@@ -501,11 +517,8 @@ fn lower_expr(se: &SerializedExpr, callable: &HashMap<String, SerializedTy>) -> 
         },
         SerializedExpr::Call { callee, args } => {
             let is_print = callee == "println" || callee == "io.println" || callee == "ori.io.println";
-            let local_result_ty = if args.is_empty() {
-                callable.get(callee).map(lower_ty)
-            } else {
-                None
-            };
+            let local_signature = callable.get(callee);
+            let local_result_ty = local_signature.map(|(_, result)| lower_ty(result));
             let (actual_callee, callee_ty) = if is_print {
                 (
                     SmolStr::new("ori_io_print"),
@@ -514,10 +527,13 @@ fn lower_expr(se: &SerializedExpr, callable: &HashMap<String, SerializedTy>) -> 
                         ret: Box::new(Ty::Void),
                     },
                 )
-            } else if let Some(result_ty) = &local_result_ty {
+            } else if let Some((param_tys, result_ty)) = local_signature {
                 (
                     SmolStr::new(callee),
-                    Ty::Func { params: vec![], ret: Box::new(result_ty.clone()) },
+                    Ty::Func {
+                        params: param_tys.iter().map(lower_ty).collect(),
+                        ret: Box::new(lower_ty(result_ty)),
+                    },
                 )
             } else {
                 unreachable!("validated bridge call has an unknown signature")

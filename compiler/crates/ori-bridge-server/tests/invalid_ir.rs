@@ -1,6 +1,6 @@
 use ori_bridge_server::{
     BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedExpr, SerializedFunc,
-    SerializedModule, SerializedStmt, SerializedTy, CURRENT_PROTOCOL_VERSION,
+    SerializedModule, SerializedParam, SerializedStmt, SerializedTy, CURRENT_PROTOCOL_VERSION,
 };
 
 fn compile_with_expr(expr: SerializedExpr) -> (ori_bridge_server::ResponseEnvelope, tempfile::TempDir) {
@@ -69,6 +69,53 @@ fn local_call_with_wrong_arity_is_rejected_before_writing_an_object() {
     let req = RequestEnvelope {
         protocol_version: CURRENT_PROTOCOL_VERSION,
         request_id: 18,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module,
+            output_path: output.to_string_lossy().into_owned(),
+            lib_mode: false,
+        })
+        .unwrap(),
+    };
+    let res = BridgeServer::new().handle_request(req);
+    assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
+    assert!(!output.exists());
+}
+
+#[test]
+fn local_call_with_wrong_parameter_type_is_rejected_before_writing_an_object() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("invalid.o");
+    let module = SerializedModule {
+        namespace: "test.calls".to_string(),
+        funcs: vec![
+            SerializedFunc {
+                name: "main".to_string(),
+                params: vec![],
+                return_ty: SerializedTy::Int,
+                body_stmts: vec![SerializedStmt::Return(Some(SerializedExpr::Call {
+                    callee: "answer".to_string(),
+                    args: vec![SerializedExpr::BoolLit(true)],
+                }))],
+                is_public: true,
+            },
+            SerializedFunc {
+                name: "answer".to_string(),
+                params: vec![SerializedParam {
+                    name: "value".to_string(),
+                    ty: SerializedTy::Int,
+                }],
+                return_ty: SerializedTy::Int,
+                body_stmts: vec![SerializedStmt::Return(Some(SerializedExpr::Var(
+                    "value".to_string(),
+                )))],
+                is_public: false,
+            },
+        ],
+    };
+    let req = RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION,
+        request_id: 19,
         command: "compile_module".to_string(),
         payload: serde_json::to_value(CompileModuleRequest {
             module,

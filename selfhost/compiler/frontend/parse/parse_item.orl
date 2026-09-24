@@ -292,6 +292,16 @@ public parse_func_signature(p: Parser, id: int) -> ParseItemOut
                                 const p_name = name
                                 const p_step = advance(param_cur)
                                 const colon_step = advance(p_step.next)
+                                match colon_step.token
+                                case some(colon_tok):
+                                    match colon_tok.kind
+                                    case Colon:
+                                    case else:
+                                        return ParseItemOut { item: none, next: colon_step.next }
+                                    end
+                                case none:
+                                    return ParseItemOut { item: none, next: colon_step.next }
+                                end
                                 const pty_step = advance(colon_step.next)
                                 match pty_step.token
                                 case some(pty_tok):

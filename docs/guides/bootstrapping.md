@@ -10,6 +10,13 @@ This guide details the process of building the Ori compiler from source, bootstr
 
 Because Ori is not currently *self-hosted* (the compiler is written in Rust), "bootstrapping" in the context of Ori refers to the process of using the host system's Rust toolchain to build the `ori-driver` binary, compile the `ori-runtime` static and dynamic libraries, and bundle the `.orl` standard library.
 
+An experimental compiler written in Ori lives under `selfhost/compiler/`. Its
+Stage 1 can compile a small subset of programs through `ori-bridge-server`,
+including local functions with one `int` parameter, but it cannot yet compile
+itself. The CI gate in `tools/qa/test_bootstrap_stages.sh` requires Stage 1 to
+produce Stage 2, then Stage 2 to produce Stage 3 and run a shared program;
+until that gate passes, do not distribute Stage 1 as a self-hosted compiler.
+
 ## 1. Prerequisites (Host Environment)
 
 To build Ori from source, you need:
