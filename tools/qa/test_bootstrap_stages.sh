@@ -1077,6 +1077,57 @@ for name in cross-function-binding cross-function-parameter early-use; do
     }
 done
 
+cat > "$work/typed-lists.orl" <<'ORI'
+module bootstrap.typed_lists
+import ori.args as cmd_args
+import ori.io as io
+import ori.list as lists
+main() -> int
+    const raw = cmd_args.all()
+    var selected: list[string] = []
+    var idx = 0
+    while idx < lists.len(raw)
+        lists.push(selected, lists.get(raw, idx))
+        idx = idx + 1
+    end
+    lists.push(selected, "end")
+    io.println(lists.get(selected, lists.len(selected) - 1))
+    return if lists.len(selected) > 0 then 0 else 1
+end
+ORI
+echo 'Stage 0/1: typed string lists and argument-list intrinsics'
+"$stage0" compile "$work/typed-lists.orl" -o "$work/typed-lists-stage0"
+"$work/ori-stage1" compile "$work/typed-lists.orl" -o "$work/typed-lists-stage1"
+"$work/typed-lists-stage0" > "$work/typed-lists-stage0.stdout"
+"$work/typed-lists-stage1" > "$work/typed-lists-stage1.stdout"
+cmp "$work/typed-lists-stage0.stdout" "$work/typed-lists-stage1.stdout"
+python3 - "$work/typed-lists-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+assert body[0]["Let"]["ty"] == {"List": "String"}, body
+assert body[0]["Let"]["value"]["Call"]["callee"] == "ori.args.all", body
+assert body[1]["Let"]["value"] == {"EmptyList": {"elem_ty": "String"}}, body
+assert body[3]["While"]["body_stmts"][0]["Expr"]["Call"]["callee"] == "ori.list.push", body
+PY
+
+cat > "$work/wrong-list-element.orl" <<'ORI'
+module bootstrap.wrong_list_element
+import ori.list as lists
+main()
+    var values: list[string] = []
+    lists.push(values, 42)
+end
+ORI
+if "$work/ori-stage1" compile "$work/wrong-list-element.orl" -o "$work/wrong-list-element.bin" > "$work/wrong-list-element.log" 2>&1; then
+    echo 'Stage 1 accepted a wrong list element type' >&2
+    exit 1
+fi
+grep -q 'bridge.unsupported_ir' "$work/wrong-list-element.log"
+test ! -e "$work/wrong-list-element.bin"
+
 echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'
 "$work/ori-stage1" compile "$source_file" -o "$work/ori-stage2"
 test -x "$work/ori-stage2" || { echo 'Stage 1 did not emit Stage 2' >&2; exit 1; }

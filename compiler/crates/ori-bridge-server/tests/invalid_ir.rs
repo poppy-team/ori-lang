@@ -96,6 +96,38 @@ fn unknown_callee_is_rejected_before_writing_an_object() {
 }
 
 #[test]
+fn list_push_rejects_wrong_element_type_before_codegen() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("invalid-list.o");
+    let module = SerializedModule {
+        namespace: "test.lists".to_string(),
+        funcs: vec![SerializedFunc {
+            name: "main".to_string(), params: vec![], return_ty: SerializedTy::Void,
+            body_stmts: vec![
+                SerializedStmt::Let {
+                    name: "strings".to_string(), ty: SerializedTy::List(Box::new(SerializedTy::String)),
+                    value: SerializedExpr::EmptyList { elem_ty: SerializedTy::String }, mutable: true,
+                },
+                SerializedStmt::Expr(SerializedExpr::Call {
+                    callee: "ori.list.push".to_string(),
+                    args: vec![SerializedExpr::Var("strings".to_string()), SerializedExpr::IntLit(42)],
+                }),
+            ], is_public: true,
+        }],
+    };
+    let response = BridgeServer::new().handle_request(RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION, request_id: 19,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module, output_path: output.to_string_lossy().into_owned(), lib_mode: false,
+        }).unwrap(),
+    });
+    assert_eq!(response.status, "error");
+    assert_eq!(response.error.unwrap().code, "bridge.unsupported_ir");
+    assert!(!output.exists());
+}
+
+#[test]
 fn local_call_with_wrong_arity_is_rejected_before_writing_an_object() {
     let dir = tempfile::tempdir().unwrap();
     let output = dir.path().join("invalid.o");

@@ -29,7 +29,7 @@ public infer_expr_tag(pool: exprs.ExprPool, id: int) -> int
 end
 
 public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string]) -> int
-    -- Returns canonical type tag: 0=unknown, 1=int, 2=string, 3=bool, 4=void.
+    -- Returns canonical type tag: 0=unknown, 1=int, 2=string, 3=bool, 4=void, 5=list[string], 6=list[int].
     if id < 0 or id >= lists.len(pool.kind_tags)
         return 0
     end
@@ -60,6 +60,21 @@ public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_n
         return infer_expr_tag_in_env(env, pool, left_id, func_names, func_ret_tys)
     elif tag == 6
         const callee = lists.get(pool.str_vals, id)
+        if callee == "ori.args.all" or callee == "ori.os.args"
+            return 5
+        end
+        if callee == "ori.list.len"
+            return 1
+        end
+        if callee == "ori.list.get" and lists.get(pool.call_arg_counts, id) == 2
+            const first = lists.get(pool.call_arg_starts, id)
+            const source_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first), func_names, func_ret_tys)
+            if source_ty == 5
+                return 2
+            elif source_ty == 6
+                return 1
+            end
+        end
         var fn_idx = 0
         while fn_idx < lists.len(func_names)
             if callee == lists.get(func_names, fn_idx)
@@ -112,6 +127,10 @@ public type_str_to_tag(ty: string) -> int
         return 3
     elif ty == "void"
         return 4
+    elif ty == "list[string]"
+        return 5
+    elif ty == "list[int]"
+        return 6
     end
     return 0
 end
@@ -234,7 +253,8 @@ public check_stmt_with_expected(
             ds.emit_error(sink, "type.type_mismatch", "binding type does not match its annotation: " + target, "use a value of the declared type")
         end
         lists.push(env.binding_names, target)
-        lists.push(env.binding_ty_tags, inferred)
+        const binding_ty = if inferred == 0 and expr_id >= 0 and lists.get(pool.kind_tags, expr_id) == 7 then declared_tag else inferred
+        lists.push(env.binding_ty_tags, binding_ty)
         lists.push(env.binding_mutable, lists.get(sp.mutable_flags, stmt_id))
     elif tag == 2 -- Return: check against expected_ret_tag
         const ret_inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)

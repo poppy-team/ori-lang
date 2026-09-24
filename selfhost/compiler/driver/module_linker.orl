@@ -147,6 +147,8 @@ rewrite_calls(catalog: ModuleCatalog, sink: ds.DiagnosticSink)
                         const member = su.slice(callee, su.len(prefix), su.len(callee))
                         if path == "ori.io" and member == "println"
                             -- This primitive is provided by the runtime.
+                        elif (path == "ori.args" and member == "all") or (path == "ori.os" and member == "args") or (path == "ori.list" and (member == "len" or member == "get" or member == "push"))
+                            lists.set(parsed.expr_str_vals, expr_idx, path + "." + member)
                         elif su.starts_with(path, "ori.")
                             -- Other standard library calls require runtime lowering.
                         else

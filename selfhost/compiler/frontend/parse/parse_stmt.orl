@@ -137,20 +137,21 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
                     const open = lists.get(tokens, cursor + 4)
                     const elem = lists.get(tokens, cursor + 5)
                     const close = lists.get(tokens, cursor + 6)
-                    var valid_elem = false
+                    var elem_ty = ""
                     match elem.kind
-                    case IntTy: valid_elem = true
-                    case StringTy: valid_elem = true
-                    case BoolTy: valid_elem = true
-                    case FloatTy: valid_elem = true
-                    case Ident(name): valid_elem = true
+                    case IntTy: elem_ty = "int"
+                    case StringTy: elem_ty = "string"
+                    case BoolTy: elem_ty = "bool"
+                    case FloatTy: elem_ty = "float"
+                    case Ident(name): elem_ty = name
                     case else:
                     end
                     match open.kind
                     case LBracket:
                         match close.kind
                         case RBracket:
-                            if valid_elem
+                            if elem_ty != ""
+                                declared_ty = "list[" + elem_ty + "]"
                                 eq_cursor = cursor + 7
                             end
                         case else:

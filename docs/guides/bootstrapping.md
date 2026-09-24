@@ -17,7 +17,9 @@ assignments, scalar `match` arms as statements or expressions, and transitive im
 the same subset.
 The scalar path also supports grouped and inline `if` expressions with
 integer, Boolean, or string branches, string locals and typed string results.
-It cannot yet compile itself: collections, enums, non-scalar pattern matching, string
+The experimental bridge handles local `list[string]` bindings initialized with
+`[]` or `ori.args.all()`, plus typed `ori.list.len/get/push` operations.
+It cannot yet compile itself: other collections, structs, enums, non-scalar pattern matching, string
 interpolation, generic signatures, and broader standard library calls are
 still outside the bridge. The CI gate in `tools/qa/test_bootstrap_stages.sh` requires Stage 1 to
 produce Stage 2, then Stage 2 to produce Stage 3 and run a shared program;

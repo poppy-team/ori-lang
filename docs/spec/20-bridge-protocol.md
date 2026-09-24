@@ -27,10 +27,13 @@ minus to integer subtraction from zero. Scalar `Match` statements and
 `BoolLit`, and a final `Wildcard` arm; integer matches require a wildcard,
 Boolean matches require either both literals or a wildcard. Statement arms
 have isolated statement lists and retain the enclosing loop context;
-expression arms yield values of one shared scalar type. The bridge rejects
+expression arms yield values of one shared scalar type. Typed `list[string]`
+locals, empty list literals, `ori.args.all` (through `ori.os.args`), and
+`ori.list.len/get/push` use their native HIR signatures. The bridge checks the
+list element and index types before code generation. The bridge rejects
 duplicate, mismatched, or incomplete patterns
 before writing the object file. The bridge checks scope, types, mutability,
-and loop placement before lowering these nodes. Collections, structural
+and loop placement before lowering these nodes. Other collections, structural
 types, generics, and non-scalar pattern matching remain outside this protocol implementation; this is not a
 complete HIR, nor a production bootstrap contract. The proposed ADR-0006
 describes the intended architecture. The schemas and timeouts below describe
@@ -192,7 +195,9 @@ Submits a lowered HIR module to the bridge to generate an object file or final b
 The implemented process path reads a JSON object with `module`, `output_path`
 and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
 `name`, `params`, `return_ty`, `body_stmts`, and `is_public`. Types are tagged
-`Int`, `Float`, `Bool`, `String`, or `Void`. The supported statement shapes are
+`Int`, `Float`, `Bool`, `String`, `Void`, or `{"List":"String"}` for the
+current client subset. A typed empty list is `{"EmptyList":{"elem_ty":"String"}}`.
+The supported statement shapes are
 `Let` (with mutability), `Assign`, `Return`, `Expr`, `If`, `While`, `Break`,
 and `Continue`; expressions are `IntLit`, `StrLit`, `BoolLit`, `Var`, `Add`,
 `Binary`, `Call`, and scalar `IfExpr`. Arithmetic `%` and Boolean `and`/`or`
@@ -208,8 +213,8 @@ with `bridge.unsupported_ir`; no external signature is inferred.
 The bridge additionally validates local integer and Boolean bindings, return types,
 integer arithmetic, comparisons between integers (producing `Bool`),
 Boolean `if`/`while` conditions, mutable assignments, branch-local scope,
-and loop control placement. Undefined variables and variable types other than
-`Int` and `Bool` are rejected until their typed lowering exists. The Ori client
+and loop control placement. Undefined variables and variables outside the supported
+scalar types and the explicitly typed list subset are rejected. The Ori client
 preserves explicit primitive local annotations and rejects an annotation that
 disagrees with its value. It can emit zero-argument
 functions with up to eight `int` parameters; it preserves parameter

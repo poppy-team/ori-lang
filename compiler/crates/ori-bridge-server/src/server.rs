@@ -196,6 +196,7 @@ fn callable_functions(module: &SerializedModule) -> CallableSignatures {
         .filter(|f| {
             f.name != "main"
                 && f.name != "println"
+                && !matches!(f.name.as_str(), "ori.args.all" | "ori.os.args" | "ori.list.len" | "ori.list.get" | "ori.list.push" | "io.println" | "ori.io.println")
                 && f.params.len() <= 8
                 && f.params.iter().all(|p| p.ty == SerializedTy::Int)
                 && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String)
@@ -358,6 +359,35 @@ fn validate_expr(
 ) -> Result<SerializedTy, String> {
     match e {
         SerializedExpr::Call { callee, args } => {
+            match callee.as_str() {
+                "ori.args.all" | "ori.os.args" if args.is_empty() => {
+                    return Ok(SerializedTy::List(Box::new(SerializedTy::String)));
+                }
+                "ori.args.all" | "ori.os.args" => {
+                    return Err(format!("{callee} expects no arguments"));
+                }
+                "ori.list.len" | "ori.list.get" | "ori.list.push" => {
+                    let required = if callee == "ori.list.len" { 1 } else { 2 };
+                    if args.len() != required {
+                        return Err(format!("{callee} expects {required} argument(s)"));
+                    }
+                    let SerializedTy::List(elem) = validate_expr(&args[0], locals, callable)? else {
+                        return Err(format!("{callee} requires a list"));
+                    };
+                    if callee == "ori.list.len" {
+                        return Ok(SerializedTy::Int);
+                    }
+                    let second = validate_expr(&args[1], locals, callable)?;
+                    if callee == "ori.list.get" && second == SerializedTy::Int {
+                        return Ok(*elem);
+                    }
+                    if callee == "ori.list.push" && second == *elem {
+                        return Ok(SerializedTy::Void);
+                    }
+                    return Err(format!("{callee} has an argument with the wrong type"));
+                }
+                _ => {}
+            }
             if let Some((param_tys, result_ty)) = callable.get(callee) {
                 if args.len() != param_tys.len() {
                     return Err(format!("call to {callee} expects {} argument(s)", param_tys.len()));
@@ -462,8 +492,15 @@ fn validate_expr(
         SerializedExpr::IntLit(_) => Ok(SerializedTy::Int),
         SerializedExpr::StrLit(_) => Ok(SerializedTy::String),
         SerializedExpr::BoolLit(_) => Ok(SerializedTy::Bool),
+        SerializedExpr::EmptyList { elem_ty } => {
+            if !matches!(elem_ty, SerializedTy::Int | SerializedTy::String) {
+                return Err("empty list requires a supported element type".to_string());
+            }
+            Ok(SerializedTy::List(Box::new(elem_ty.clone())))
+        }
         SerializedExpr::Var(name) => match locals.get(name) {
             Some(ty) if matches!(ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String) => Ok(ty.clone()),
+            Some(SerializedTy::List(elem)) if matches!(elem.as_ref(), SerializedTy::Int | SerializedTy::String) => Ok(SerializedTy::List(elem.clone())),
             Some(_) => Err(format!("variable {name} requires typed lowering")),
             None => Err(format!("undefined variable: {name}")),
         },
@@ -490,6 +527,7 @@ fn lower_ty(ty: &SerializedTy) -> Ty {
         SerializedTy::Float => Ty::Float,
         SerializedTy::Bool => Ty::Bool,
         SerializedTy::String => Ty::String,
+        SerializedTy::List(elem) => Ty::List(Box::new(lower_ty(elem))),
         SerializedTy::Void => Ty::Void,
     }
 }
@@ -687,6 +725,11 @@ fn lower_expr(
             ty: Ty::Bool,
             span: Span::DUMMY,
         },
+        SerializedExpr::EmptyList { elem_ty } => HirExpr {
+            kind: HirExprKind::ListLit { elem_ty: lower_ty(elem_ty), elements: vec![] },
+            ty: Ty::List(Box::new(lower_ty(elem_ty))),
+            span: Span::DUMMY,
+        },
         SerializedExpr::Var(name) => HirExpr {
             kind: HirExprKind::Var(SmolStr::new(name)),
             ty: lower_ty(locals.get(name).expect("validated bridge variable is in scope")),
@@ -727,7 +770,15 @@ fn lower_expr(
         SerializedExpr::Call { callee, args } => {
             let is_print = callee == "println" || callee == "io.println" || callee == "ori.io.println";
             let local_signature = callable.get(callee);
-            let local_result_ty = local_signature.map(|(_, result)| lower_ty(result));
+            let result_ty = lower_ty(&validate_expr(se, locals, callable).expect("validated bridge call"));
+            let arg_tys: Vec<Ty> = args.iter().map(|arg| lower_ty(&validate_expr(arg, locals, callable).expect("validated bridge argument"))).collect();
+            let intrinsic = match callee.as_str() {
+                "ori.args.all" | "ori.os.args" => Some("ori_os_args"),
+                "ori.list.len" => Some("ori_list_len"),
+                "ori.list.get" => Some("ori_list_get"),
+                "ori.list.push" => Some("ori_list_push"),
+                _ => None,
+            };
             let (actual_callee, callee_ty) = if is_print {
                 (
                     SmolStr::new("ori_io_print"),
@@ -736,12 +787,14 @@ fn lower_expr(
                         ret: Box::new(Ty::Void),
                     },
                 )
-            } else if let Some((param_tys, result_ty)) = local_signature {
+            } else if let Some(name) = intrinsic {
+                (SmolStr::new(name), Ty::Func { params: arg_tys, ret: Box::new(result_ty.clone()) })
+            } else if let Some((param_tys, result)) = local_signature {
                 (
                     SmolStr::new(callee),
                     Ty::Func {
                         params: param_tys.iter().map(lower_ty).collect(),
-                        ret: Box::new(lower_ty(result_ty)),
+                        ret: Box::new(lower_ty(result)),
                     },
                 )
             } else {
@@ -779,7 +832,7 @@ fn lower_expr(
                     }),
                     args: lowered_args,
                 },
-                ty: local_result_ty.unwrap_or(Ty::Void),
+                ty: result_ty,
                 span: Span::DUMMY,
             }
         },

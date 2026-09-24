@@ -47,6 +47,7 @@ pub enum SerializedTy {
     Float,
     Bool,
     String,
+    List(Box<SerializedTy>),
     Void,
 }
 
@@ -72,6 +73,7 @@ pub enum SerializedExpr {
     IntLit(i64),
     StrLit(String),
     BoolLit(bool),
+    EmptyList { elem_ty: SerializedTy },
     Var(String),
     Binary {
         op: SerializedBinaryOp,

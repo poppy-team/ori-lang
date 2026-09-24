@@ -34,6 +34,9 @@ public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string
         return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
     if tag == 6
+        if lists.get(pool.str_vals, id) == "ori.list.len" and lists.get(pool.call_arg_counts, id) == 1
+            return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, lists.get(pool.call_arg_starts, id)), local_names)
+        end
         return can_emit_local_call(pool, id, local_names, bool_names, func_names, func_ret_tys, func_param_counts, "int")
     end
     if tag == 11
@@ -127,6 +130,10 @@ can_emit_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string], boo
         return contains_name(string_names, lists.get(pool.str_vals, id))
     end
     if tag == 6
+        if lists.get(pool.str_vals, id) == "ori.list.get" and lists.get(pool.call_arg_counts, id) == 2
+            const first = lists.get(pool.call_arg_starts, id)
+            return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, first), int_names) and can_emit_int_expr(pool, lists.get(pool.call_arg_ids, first + 1), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+        end
         return can_emit_local_call(pool, id, int_names, bool_names, func_names, func_ret_tys, func_param_counts, "string")
     end
     if tag == 11
@@ -136,6 +143,31 @@ can_emit_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string], boo
         return can_emit_match_expr(pool, id, "string", int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
     end
     return false
+end
+
+-- List bindings are recorded with a prefix in int_names so scalar lookup
+-- cannot mistake a list for an integer. Only list[string] crosses this path.
+can_emit_list_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 4
+        return contains_name(int_names, "@list:" + lists.get(pool.str_vals, id))
+    end
+    if tag == 6
+        const callee = lists.get(pool.str_vals, id)
+        return (callee == "ori.args.all" or callee == "ori.os.args") and lists.get(pool.call_arg_counts, id) == 0
+    end
+    return false
+end
+
+can_emit_list_push(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags) or lists.get(pool.kind_tags, id) != 6 or lists.get(pool.str_vals, id) != "ori.list.push" or lists.get(pool.call_arg_counts, id) != 2
+        return false
+    end
+    const first = lists.get(pool.call_arg_starts, id)
+    return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, first), int_names) and can_emit_string_expr(pool, lists.get(pool.call_arg_ids, first + 1), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
 end
 
 can_emit_match_expr(pool: exprs.ExprPool, id: int, result_ty: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
@@ -291,18 +323,21 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 const is_int = can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 const is_string = can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
-                if not is_int and not is_bool and not is_string
+                const annotated = lists.get(sp.type_annotations, i)
+                const is_list_string = (annotated == "" or annotated == "list[string]") and can_emit_list_string_expr(pool, expr_id, int_names) or (annotated == "list[string]" and expr_id >= 0 and lists.get(pool.kind_tags, expr_id) == 7)
+                if not is_int and not is_bool and not is_string and not is_list_string
                     return false
                 end
-                const annotated = lists.get(sp.type_annotations, i)
                 if (is_int and annotated != "" and annotated != "int") or (is_bool and annotated != "" and annotated != "bool") or (is_string and annotated != "" and annotated != "string")
                     return false
                 end
                 const target = lists.get(sp.target_names, i)
-                if target == "" or contains_name(int_names, target) or contains_name(bool_names, target) or contains_name(string_names, target)
+                if target == "" or contains_name(int_names, target) or contains_name(int_names, "@list:" + target) or contains_name(bool_names, target) or contains_name(string_names, target)
                     return false
                 end
-                if is_int
+                if is_list_string
+                    lists.push(int_names, "@list:" + target)
+                elif is_int
                     lists.push(int_names, target)
                 elif is_bool
                     lists.push(bool_names, target)
@@ -329,7 +364,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_list_push(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         elif tag == 4
@@ -429,6 +464,10 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 if not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
+            elif contains_name(int_names, "@list:" + target)
+                if not can_emit_list_string_expr(pool, expr_id, int_names)
+                    return false
+                end
             else
                 return false
             end
@@ -462,6 +501,8 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
     elif tag == 4 -- Var / Ident
         const name = lists.get(pool.str_vals, id)
         return "{\"Var\":\"" + name + "\"}"
+    elif tag == 7 -- An empty list is emitted only after the typed binding check.
+        return "{\"EmptyList\":{\"elem_ty\":\"String\"}}"
     elif tag == 5 -- Binary
         const left_id = lists.get(pool.left_ids, id)
         const right_id = lists.get(pool.right_ids, id)
@@ -615,7 +656,10 @@ emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_id
         if tag == 1
             const target = lists.get(sp.target_names, i)
             var ty = "Int"
-            if can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+            if can_emit_list_string_expr(pool, expr_id, int_names) or lists.get(sp.type_annotations, i) == "list[string]"
+                ty = "{\"List\":\"String\"}"
+                lists.push(int_names, "@list:" + target)
+            elif can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 ty = "Bool"
                 lists.push(bool_names, target)
             elif can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
@@ -625,7 +669,8 @@ emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_id
                 lists.push(int_names, target)
             end
             const mutable_json = if lists.get(sp.mutable_flags, i) == 1 then "true" else "false"
-            s = "{\"Let\":{\"name\":\"" + target + "\",\"ty\":\"" + ty + "\",\"value\":" + emit_expr_json(pool, expr_id) + ",\"mutable\":" + mutable_json + "}}"
+            const ty_json = if ty == "{\"List\":\"String\"}" then ty else "\"" + ty + "\""
+            s = "{\"Let\":{\"name\":\"" + target + "\",\"ty\":" + ty_json + ",\"value\":" + emit_expr_json(pool, expr_id) + ",\"mutable\":" + mutable_json + "}}"
         elif tag == 2
             if expr_id == -1
                 s = "{\"Return\":null}"

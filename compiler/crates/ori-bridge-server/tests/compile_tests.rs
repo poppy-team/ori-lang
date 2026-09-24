@@ -1,8 +1,51 @@
 use ori_bridge_server::{
-    BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedFunc, SerializedModule,
+    BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedExpr, SerializedFunc, SerializedModule,
     SerializedParam, SerializedStmt, SerializedTy, CURRENT_PROTOCOL_VERSION,
 };
 use tempfile::NamedTempFile;
+
+#[test]
+fn test_bridge_typed_string_list_arguments_and_intrinsics() {
+    let output = NamedTempFile::new().unwrap();
+    let list_string = SerializedTy::List(Box::new(SerializedTy::String));
+    let call = |callee: &str, args: Vec<SerializedExpr>| SerializedExpr::Call {
+        callee: callee.to_string(), args,
+    };
+    let var = |name: &str| SerializedExpr::Var(name.to_string());
+    let module = SerializedModule {
+        namespace: "test.bridge.collections".to_string(),
+        funcs: vec![SerializedFunc {
+            name: "main".to_string(), params: vec![], return_ty: SerializedTy::Int,
+            body_stmts: vec![
+                SerializedStmt::Let {
+                    name: "arguments".to_string(), ty: list_string.clone(), mutable: false,
+                    value: call("ori.args.all", vec![]),
+                },
+                SerializedStmt::Let {
+                    name: "copy".to_string(), ty: list_string, mutable: true,
+                    value: SerializedExpr::EmptyList { elem_ty: SerializedTy::String },
+                },
+                SerializedStmt::Expr(call("ori.list.push", vec![
+                    var("copy"), SerializedExpr::StrLit("ok".to_string()),
+                ])),
+                SerializedStmt::Expr(call("ori.io.println", vec![call("ori.list.get", vec![
+                    var("copy"), SerializedExpr::IntLit(0),
+                ])])),
+                SerializedStmt::Return(Some(call("ori.list.len", vec![var("arguments")]))),
+            ],
+            is_public: true,
+        }],
+    };
+    let response = BridgeServer::new().handle_request(RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION, request_id: 2004,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module, output_path: output.path().to_string_lossy().into_owned(), lib_mode: false,
+        }).unwrap(),
+    });
+    assert_eq!(response.status, "ok", "typed list compilation failed: {:?}", response.error);
+    assert!(output.path().metadata().unwrap().len() > 0);
+}
 
 #[test]
 fn test_bridge_real_codegen_round_trip() {
