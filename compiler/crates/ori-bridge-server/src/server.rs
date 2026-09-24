@@ -1,13 +1,15 @@
 use crate::protocol::{
     BridgeErrorPayload, CompileModuleRequest, CompileModuleResponse, HandshakeRequest,
     HandshakeResponse, RequestEnvelope, ResponseEnvelope, SerializedBinaryOp, SerializedExpr,
-    SerializedFunc, SerializedModule, SerializedStmt, SerializedTy, CURRENT_PROTOCOL_VERSION,
+    SerializedFunc, SerializedModule, SerializedPattern, SerializedStmt, SerializedTy,
+    CURRENT_PROTOCOL_VERSION,
 };
 use ori_ast::expr::BinaryOp;
 use ori_codegen::{emit_native_with_options, NativeEmitOptions};
 use ori_diagnostics::Span;
 use ori_hir::hir::{
-    HirArg, HirBlock, HirExpr, HirExprKind, HirFunc, HirLValue, HirModule, HirParam, HirStmt,
+    HirArg, HirArm, HirBlock, HirExpr, HirExprKind, HirFunc, HirLValue, HirModule, HirParam,
+    HirPattern, HirStmt,
 };
 use ori_types::{DefId, Ty};
 use smol_str::SmolStr;
@@ -304,6 +306,47 @@ fn validate_stmt(
                 validate_stmt(bs, &mut body_locals, &mut body_mutable, return_ty, callable, true)?;
             }
         }
+        SerializedStmt::Match { scrutinee, arms } => {
+            let ty = validate_expr(scrutinee, locals, callable)?;
+            if !matches!(ty, SerializedTy::Int | SerializedTy::Bool) || arms.is_empty() {
+                return Err("match requires a scalar scrutinee and at least one arm".to_string());
+            }
+            let mut ints = HashSet::new();
+            let mut bools = HashSet::new();
+            let mut wildcard = false;
+            for (index, arm) in arms.iter().enumerate() {
+                if wildcard {
+                    return Err("match wildcard must be the last arm".to_string());
+                }
+                match &arm.pattern {
+                    SerializedPattern::IntLit(n) if ty == SerializedTy::Int => {
+                        if !ints.insert(*n) {
+                            return Err("duplicate integer match pattern".to_string());
+                        }
+                    }
+                    SerializedPattern::BoolLit(value) if ty == SerializedTy::Bool => {
+                        if !bools.insert(*value) {
+                            return Err("duplicate boolean match pattern".to_string());
+                        }
+                    }
+                    SerializedPattern::Wildcard => {
+                        wildcard = true;
+                        if index + 1 != arms.len() {
+                            return Err("match wildcard must be the last arm".to_string());
+                        }
+                    }
+                    _ => return Err("match pattern type does not match scrutinee".to_string()),
+                }
+                let mut arm_locals = locals.clone();
+                let mut arm_mutable = mutable_names.clone();
+                for stmt in &arm.body_stmts {
+                    validate_stmt(stmt, &mut arm_locals, &mut arm_mutable, return_ty, callable, in_loop)?;
+                }
+            }
+            if !wildcard && (ty == SerializedTy::Int || bools.len() != 2) {
+                return Err("match is not exhaustive".to_string());
+            }
+        }
     }
     Ok(())
 }
@@ -538,6 +581,26 @@ fn lower_stmt(
                         .collect(),
                     span: Span::DUMMY,
                 },
+                span: Span::DUMMY,
+            }
+        }
+        SerializedStmt::Match { scrutinee, arms } => {
+            let lowered_scrutinee = lower_expr(scrutinee, callable, locals);
+            HirStmt::Match {
+                scrutinee: lowered_scrutinee,
+                arms: arms.iter().map(|arm| {
+                    let mut arm_locals = locals.clone();
+                    HirArm {
+                        pattern: match &arm.pattern {
+                            SerializedPattern::IntLit(value) => HirPattern::IntLit(*value),
+                            SerializedPattern::BoolLit(value) => HirPattern::BoolLit(*value),
+                            SerializedPattern::Wildcard => HirPattern::Wildcard,
+                        },
+                        guard: None,
+                        body: arm.body_stmts.iter().map(|stmt| lower_stmt(stmt, callable, &mut arm_locals)).collect(),
+                        span: Span::DUMMY,
+                    }
+                }).collect(),
                 span: Span::DUMMY,
             }
         }

@@ -6,7 +6,8 @@ pub use framing::{read_frame, write_frame, FrameError, MAX_FRAME_SIZE, PROTOCOL_
 pub use protocol::{
     BridgeErrorPayload, CompileModuleRequest, CompileModuleResponse, HandshakeRequest,
     HandshakeResponse, RequestEnvelope, ResponseEnvelope, SerializedBinaryOp, SerializedExpr,
-    SerializedFunc, SerializedModule, SerializedParam, SerializedStmt, SerializedTy,
+    SerializedFunc, SerializedMatchArm, SerializedModule, SerializedParam, SerializedPattern,
+    SerializedStmt, SerializedTy,
     CURRENT_PROTOCOL_VERSION,
 };
 pub const RUNTIME_IO_PRINT: &str = "ori_io_print";

@@ -16,14 +16,18 @@ This chapter specifies the versioned framing protocol and data schema exchanged 
 accepts `--request-file <path>` containing an unframed JSON
 `CompileModuleRequest` and constructs the envelope itself. The framing helpers
 exist as library functions, but the self-host client does not use framed IPC.
-The current scalar subset includes nested `If`/`While`, `elif` chains lowered
+The current scalar subset includes nested `If`/`While`/`Match`, `elif` chains lowered
 to nested `If` nodes in the preceding `else` branch, `Let` mutability,
 `Assign`, `Break`/`Continue`, and typed local calls with up to eight integer
 parameters. The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
-minus to integer subtraction from zero. The bridge checks scope, types,
-mutability, and loop placement before lowering these nodes. Collections,
-structural types, generics, and
-pattern matching remain outside this protocol implementation; this is not a
+minus to integer subtraction from zero. Scalar `Match` accepts `IntLit`,
+`BoolLit`, and a final `Wildcard` arm; integer matches require a wildcard,
+Boolean matches require either both literals or a wildcard. Every arm has a
+list of statements, isolated local scope, and preserves the enclosing loop
+context. The bridge rejects duplicate, mismatched, or incomplete patterns
+before writing the object file. The bridge checks scope, types, mutability,
+and loop placement before lowering these nodes. Collections, structural
+types, generics, and non-scalar pattern matching remain outside this protocol implementation; this is not a
 complete HIR, nor a production bootstrap contract. The proposed ADR-0006
 describes the intended architecture. The schemas and timeouts below describe
 the target protocol, not features already implemented by the CLI.

@@ -91,6 +91,19 @@ pub enum SerializedExpr {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SerializedPattern {
+    IntLit(i64),
+    BoolLit(bool),
+    Wildcard,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerializedMatchArm {
+    pub pattern: SerializedPattern,
+    pub body_stmts: Vec<SerializedStmt>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SerializedStmt {
     Let {
         name: String,
@@ -110,6 +123,10 @@ pub enum SerializedStmt {
         else_stmts: Vec<SerializedStmt>,
     },
     While { cond: SerializedExpr, body_stmts: Vec<SerializedStmt> },
+    Match {
+        scrutinee: SerializedExpr,
+        arms: Vec<SerializedMatchArm>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

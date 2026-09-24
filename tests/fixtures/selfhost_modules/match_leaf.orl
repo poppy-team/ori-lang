@@ -1,0 +1,9 @@
+module tests.fixtures.selfhost_modules.match_leaf
+public choose(n: int) -> int
+    match n
+    case 0:
+        return 1
+    case else:
+        return n
+    end
+end

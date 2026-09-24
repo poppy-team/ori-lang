@@ -101,6 +101,14 @@ started: 2026-09-07
 > representados, e ainda termina na mesma recusa explícita antes de stage2.
 > Stage2 e stage3 ainda não foram produzidos.
 
+> Revisão seguinte: o frontend preserva `match` como statement com braços
+> inteiros/booleanos e fallback explícito; cada corpo mantém seu escopo e o
+> contexto do laço. O protocolo e a bridge validam padrões, cobertura e
+> duplicatas antes da geração nativa. Fixtures cobrem `match` dentro de laço e
+> dentro de uma função importada transitivamente. A validação remota dessa
+> revisão e a autocompilação ainda precisam passar pelo gate de CI; `match`
+> de enum/optional/result, coleções e tipos genéricos seguem pendentes.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

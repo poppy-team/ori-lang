@@ -1,6 +1,7 @@
 use ori_bridge_server::{
     BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedExpr, SerializedFunc,
-    SerializedModule, SerializedParam, SerializedStmt, SerializedTy, CURRENT_PROTOCOL_VERSION,
+    SerializedMatchArm, SerializedModule, SerializedParam, SerializedPattern, SerializedStmt,
+    SerializedTy, CURRENT_PROTOCOL_VERSION,
 };
 
 fn compile_with_expr(expr: SerializedExpr) -> (ori_bridge_server::ResponseEnvelope, tempfile::TempDir) {
@@ -26,6 +27,46 @@ fn compile_with_expr(expr: SerializedExpr) -> (ori_bridge_server::ResponseEnvelo
         .unwrap(),
     };
     (BridgeServer::new().handle_request(req), dir)
+}
+
+fn compile_with_match(arms: Vec<SerializedMatchArm>) -> (ori_bridge_server::ResponseEnvelope, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let req = RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION,
+        request_id: 27,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module: SerializedModule {
+                namespace: "test.match".to_string(),
+                funcs: vec![SerializedFunc {
+                    name: "main".to_string(),
+                    params: vec![],
+                    return_ty: SerializedTy::Void,
+                    body_stmts: vec![SerializedStmt::Match {
+                        scrutinee: SerializedExpr::IntLit(1),
+                        arms,
+                    }],
+                    is_public: true,
+                }],
+            },
+            output_path: dir.path().join("invalid-match.o").to_string_lossy().into_owned(),
+            lib_mode: false,
+        }).unwrap(),
+    };
+    (BridgeServer::new().handle_request(req), dir)
+}
+
+#[test]
+fn nonexhaustive_and_mistyped_match_arms_are_rejected_before_codegen() {
+    for pattern in [SerializedPattern::IntLit(1), SerializedPattern::BoolLit(true)] {
+        let (res, dir) = compile_with_match(vec![SerializedMatchArm {
+            pattern,
+            body_stmts: vec![SerializedStmt::Return(None)],
+        }]);
+        assert_eq!(res.status, "error");
+        assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
+        assert!(!dir.path().join("invalid-match.o").exists());
+    }
 }
 
 #[test]

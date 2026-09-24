@@ -257,6 +257,23 @@ check_scope_block(dmap: DefMap, sink: ds.DiagnosticSink, expr_kinds: list[int], 
             check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, else_start, subtree_end, copy_visible_names(visible_locals))
         elif tag == 5
             check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, i + 1, subtree_end, copy_visible_names(visible_locals))
+        elif tag == 9
+            var arm = i + 1
+            while arm < subtree_end
+                if lists.get(stmt_kinds, arm) != 10
+                    break
+                end
+                const pat_expr = lists.get(stmt_exprs, arm)
+                if pat_expr >= 0
+                    check_scoped_expr(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, pat_expr, visible_locals)
+                end
+                const arm_end = lists.get(stmt_ends, arm)
+                if arm_end <= arm or arm_end > subtree_end
+                    break
+                end
+                check_scope_block(dmap, sink, expr_kinds, expr_lefts, expr_rights, expr_thirds, expr_names, expr_arg_starts, expr_arg_counts, expr_arg_ids, stmt_kinds, stmt_exprs, stmt_names, stmt_branches, stmt_ends, arm + 1, arm_end, copy_visible_names(visible_locals))
+                arm = arm_end
+            end
         end
         if subtree_end <= i
             i = i + 1

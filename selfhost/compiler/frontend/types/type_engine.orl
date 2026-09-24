@@ -156,6 +156,11 @@ public check_stmt_with_expected(
         if cond_ty != 3 and cond_ty != 0
             ds.emit_error(sink, "type.condition_not_bool", "condition must be of bool type", "wrap with comparison or boolean call")
         end
+    elif tag == 9 -- Scalar match scrutinee.
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        if scrutinee_ty != 0 and scrutinee_ty != 1 and scrutinee_ty != 3
+            ds.emit_error(sink, "type.match_scrutinee", "match requires an integer or boolean scrutinee", "use a supported scalar match")
+        end
     end
 end
 
@@ -238,6 +243,72 @@ check_block(env: TypeEnv, sink: ds.DiagnosticSink, sp: stmts.StmtPool, pool: exp
             check_block(clone_env(env), sink, sp, pool, else_start, subtree_end, expected_ret_tag, func_names, func_ret_tys, in_loop)
         elif tag == 5
             check_block(clone_env(env), sink, sp, pool, i + 1, subtree_end, expected_ret_tag, func_names, func_ret_tys, true)
+        elif tag == 9
+            const scrutinee_ty = infer_expr_tag_in_env(env, pool, lists.get(sp.expr_ids, i), func_names, func_ret_tys)
+            var arm = i + 1
+            var arm_count = 0
+            var has_wildcard = false
+            var has_true = false
+            var has_false = false
+            const int_patterns: list[string] = []
+            while arm < subtree_end
+                if lists.get(sp.kind_tags, arm) != 10
+                    ds.emit_error(sink, "type.invalid_match_arm", "invalid match arm", "use case pattern: body")
+                    break
+                end
+                if has_wildcard
+                    ds.emit_error(sink, "type.unreachable_match_arm", "case follows a wildcard", "move the wildcard to the last case")
+                end
+                const pat_id = lists.get(sp.expr_ids, arm)
+                if pat_id >= 0
+                    const pat_ty = infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys)
+                    if scrutinee_ty != 0 and pat_ty != 0 and pat_ty != scrutinee_ty
+                        ds.emit_error(sink, "type.match_pattern_mismatch", "pattern and scrutinee have different types", "use a pattern with the same type")
+                    end
+                    const pat_tag = lists.get(pool.kind_tags, pat_id)
+                    if pat_tag == 1
+                        const raw = lists.get(pool.str_vals, pat_id)
+                        var seen = false
+                        var pat_idx = 0
+                        while pat_idx < lists.len(int_patterns)
+                            if raw == lists.get(int_patterns, pat_idx)
+                                seen = true
+                            end
+                            pat_idx = pat_idx + 1
+                        end
+                        if seen
+                            ds.emit_error(sink, "type.duplicate_match_arm", "duplicate integer pattern", "remove the repeated case")
+                        end
+                        lists.push(int_patterns, raw)
+                    elif pat_tag == 3
+                        if lists.get(pool.str_vals, pat_id) == "true"
+                            if has_true
+                                ds.emit_error(sink, "type.duplicate_match_arm", "duplicate true pattern", "remove the repeated case")
+                            end
+                            has_true = true
+                        end
+                        if lists.get(pool.str_vals, pat_id) == "false"
+                            if has_false
+                                ds.emit_error(sink, "type.duplicate_match_arm", "duplicate false pattern", "remove the repeated case")
+                            end
+                            has_false = true
+                        end
+                    end
+                else
+                    has_wildcard = true
+                end
+                const arm_end = lists.get(sp.subtree_ends, arm)
+                if arm_end <= arm or arm_end > subtree_end
+                    ds.emit_error(sink, "type.invalid_match_arm", "invalid match arm range", "check the case body")
+                    break
+                end
+                check_block(clone_env(env), sink, sp, pool, arm + 1, arm_end, expected_ret_tag, func_names, func_ret_tys, in_loop)
+                arm_count = arm_count + 1
+                arm = arm_end
+            end
+            if arm_count == 0 or (not has_wildcard and (scrutinee_ty == 1 or (scrutinee_ty == 3 and (not has_true or not has_false))))
+                ds.emit_error(sink, "type.nonexhaustive_match", "match does not cover every value", "add a final case else: or cover both Boolean values")
+            end
         elif tag == 7 or tag == 8
             if not in_loop
                 ds.emit_error(sink, "type.loop_control_outside_loop", "break or continue outside a loop", "use break or continue inside while")

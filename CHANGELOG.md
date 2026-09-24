@@ -12,6 +12,12 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 preserves scalar `match` statements, including integer cases with a
+  final fallback and exhaustive Boolean cases, through the native bridge.
+  Each case body keeps lexical scope and loop context; incomplete, duplicate,
+  or mistyped patterns are rejected before native code generation. Bootstrap
+  fixtures compare stage0 and stage1 execution and cover a match in a
+  transitive imported function. Composite patterns remain unsupported.
 - Stage 1 now escapes decoded UTF-8 strings correctly in bridge JSON,
   preserving quote characters, tabs, and newlines. Bytes literals and
   unsupported or malformed string escapes fail instead of emitting a

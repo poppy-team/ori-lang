@@ -382,6 +382,66 @@ assert conditional["then_stmts"][0]["Assign"]["name"] == "value", conditional
 assert conditional["else_stmts"][0]["Assign"]["name"] == "value", conditional
 PY
 
+cat > "$work/scalar-match.orl" <<'ORI'
+module bootstrap.scalar_match
+import ori.io as io
+main()
+    var value = 0
+    while value < 3
+        match value
+        case 0:
+            io.println("zero")
+        case 1:
+            io.println("one")
+        case else:
+            io.println("other")
+        end
+        value = value + 1
+    end
+    match true
+    case true:
+        io.println("ready")
+    case false:
+        io.println("wait")
+    end
+end
+ORI
+echo 'Stage 0/1: integer and Boolean match arms inside a loop'
+"$stage0" compile "$work/scalar-match.orl" -o "$work/scalar-match-stage0"
+"$work/ori-stage1" compile "$work/scalar-match.orl" -o "$work/scalar-match-stage1"
+timeout 10s "$work/scalar-match-stage0" > "$work/scalar-match-stage0.stdout"
+timeout 10s "$work/scalar-match-stage1" > "$work/scalar-match-stage1.stdout"
+cmp "$work/scalar-match-stage0.stdout" "$work/scalar-match-stage1.stdout"
+python3 - "$work/scalar-match-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+arms = body[1]["While"]["body_stmts"][0]["Match"]["arms"]
+assert [arm["pattern"] for arm in arms] == [
+    {"IntLit": 0}, {"IntLit": 1}, "Wildcard"
+], arms
+assert [arm["pattern"] for arm in body[2]["Match"]["arms"]] == [
+    {"BoolLit": True}, {"BoolLit": False}
+], body
+PY
+
+# An integer match without a fallback must not become a partial executable.
+cat > "$work/nonexhaustive-match.orl" <<'ORI'
+module bootstrap.nonexhaustive_match
+main()
+    match 1
+    case 1:
+        return
+    end
+end
+ORI
+if "$work/ori-stage1" compile "$work/nonexhaustive-match.orl" -o "$work/nonexhaustive-match-stage1" > "$work/nonexhaustive-match.log" 2>&1; then
+    echo 'Stage 1 compiled a non-exhaustive integer match' >&2
+    exit 1
+fi
+
 cat > "$work/elif-chain.orl" <<'ORI'
 module bootstrap.elif_chain
 import ori.io as io
@@ -500,6 +560,25 @@ assert [f["name"] for f in funcs] == [
     "tests.fixtures.selfhost_modules.leaf.hidden",
 ], funcs
 assert funcs[1]["body_stmts"][0]["Return"]["Add"][0]["Call"]["callee"] == funcs[2]["name"], funcs
+PY
+
+echo 'Stage 0/1: match inside a transitive imported definition'
+"$stage0" compile "$repo/tests/fixtures/selfhost_modules/match_root.orl" -o "$work/import-match-stage0"
+"$work/ori-stage1" compile "$repo/tests/fixtures/selfhost_modules/match_root.orl" -o "$work/import-match-stage1"
+"$work/import-match-stage0"
+"$work/import-match-stage1"
+python3 - "$work/import-match-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert [f["name"] for f in funcs] == [
+    "main",
+    "tests.fixtures.selfhost_modules.match_middle.value",
+    "tests.fixtures.selfhost_modules.match_leaf.choose",
+], funcs
+assert funcs[2]["body_stmts"][0]["Match"]["arms"][1]["pattern"] == "Wildcard", funcs
 PY
 
 for case in cycle_root missing_leaf private_member; do

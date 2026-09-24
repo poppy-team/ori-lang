@@ -10,7 +10,7 @@ import selfhost.compiler.frontend.parse.postfix as pf
 import selfhost.compiler.frontend.parse.pratt as pr
 
 public struct StmtPool
-    kind_tags: list[int] -- 1=Let, 2=Return, 3=Expr, 4=If, 5=While, 6=Assign, 7=Break, 8=Continue
+    kind_tags: list[int] -- 1=Let, 2=Return, 3=Expr, 4=If, 5=While, 6=Assign, 7=Break, 8=Continue, 9=Match, 10=Case
     expr_ids: list[int]
     target_names: list[string]
     type_annotations: list[string]
@@ -207,7 +207,7 @@ end
 
 -- All statements are stored in preorder. Each block parent records where its
 -- branches start and its exclusive end, so no nested body can be dropped.
-parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool, allow_else: bool) -> int
+parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool, allow_else: bool, allow_case: bool) -> int
     var cur = cursor
     while cur < lists.len(tokens)
         const token = lists.get(tokens, cur)
@@ -225,6 +225,12 @@ parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: Stmt
                 return cur
             end
             alloc_stmt_raw(sp, 0, -1, "unexpected_elif")
+            cur = cur + 1
+        case Case:
+            if allow_case
+                return cur
+            end
+            alloc_stmt_raw(sp, 0, -1, "unexpected_case")
             cur = cur + 1
         case else:
             match parse_statement(tokens, cur, pool, sp)
@@ -250,13 +256,13 @@ parse_if_branch(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: 
     match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
     case some(cond_out):
         const stmt_id = alloc_stmt_raw(sp, 4, cond_out.expr_id, "")
-        var cur = parse_block(tokens, cond_out.next_cursor, pool, sp, true)
+        var cur = parse_block(tokens, cond_out.next_cursor, pool, sp, true, false)
         lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
         if cur < lists.len(tokens)
             const boundary = lists.get(tokens, cur)
             match boundary.kind
             case Else:
-                cur = parse_block(tokens, cur + 1, pool, sp, false)
+                cur = parse_block(tokens, cur + 1, pool, sp, false, false)
             case Elif:
                 match parse_if_branch(tokens, cur, pool, sp)
                 case some(out):
@@ -298,7 +304,7 @@ public parse_while(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, s
     match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
     case some(cond_out):
         const stmt_id = alloc_stmt_raw(sp, 5, cond_out.expr_id, "")
-        const cur = parse_block(tokens, cond_out.next_cursor, pool, sp, false)
+        const cur = parse_block(tokens, cond_out.next_cursor, pool, sp, false, false)
         const end_idx = lists.len(sp.kind_tags)
         lists.set(sp.branch_starts, stmt_id, end_idx)
         lists.set(sp.subtree_ends, stmt_id, end_idx)
@@ -308,6 +314,68 @@ public parse_while(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, s
         alloc_stmt_raw(sp, 0, -1, "unterminated_while")
         return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur })
     case none:
+        return none
+    end
+end
+
+-- Match and its cases occupy one preorder subtree. Every case owns a block,
+-- so nested match/if/while bodies cannot consume the next case by accident.
+public parse_match(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
+    match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
+    case none:
+        return none
+    case some(scrutinee):
+        const stmt_id = alloc_stmt_raw(sp, 9, scrutinee.expr_id, "")
+        var cur = scrutinee.next_cursor
+        var arm_count = 0
+        while cur < lists.len(tokens)
+            const boundary = lists.get(tokens, cur)
+            match boundary.kind
+            case End:
+                lists.set(sp.subtree_ends, stmt_id, lists.len(sp.kind_tags))
+                if arm_count == 0
+                    alloc_stmt_raw(sp, 0, -1, "empty_match")
+                end
+                return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur + 1 })
+            case Case:
+                if cur + 2 >= lists.len(tokens)
+                    return none
+                end
+                const pattern = lists.get(tokens, cur + 1)
+                var pat_id = -1
+                var wildcard = ""
+                match pattern.kind
+                case IntLit(raw):
+                    pat_id = exprs.alloc_expr_raw(pool, 1, -1, -1, raw)
+                case True:
+                    pat_id = exprs.alloc_expr_raw(pool, 3, -1, -1, "true")
+                case False:
+                    pat_id = exprs.alloc_expr_raw(pool, 3, -1, -1, "false")
+                case Else:
+                    wildcard = "else"
+                case Ident(name):
+                    if name == "_"
+                        wildcard = "else"
+                    end
+                case else:
+                end
+                if pat_id == -1 and wildcard == ""
+                    return none
+                end
+                const separator = lists.get(tokens, cur + 2)
+                match separator.kind
+                case Colon:
+                case else:
+                    return none
+                end
+                const arm_id = alloc_stmt_raw(sp, 10, pat_id, wildcard)
+                cur = parse_block(tokens, cur + 3, pool, sp, false, true)
+                lists.set(sp.subtree_ends, arm_id, lists.len(sp.kind_tags))
+                arm_count = arm_count + 1
+            case else:
+                return none
+            end
+        end
         return none
     end
 end
@@ -329,6 +397,8 @@ public parse_statement(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPoo
         return parse_if(tokens, cursor, pool, sp)
     case While:
         return parse_while(tokens, cursor, pool, sp)
+    case Match:
+        return parse_match(tokens, cursor, pool, sp)
     case Break:
         const stmt_id = alloc_stmt_raw(sp, 7, -1, "")
         return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cursor + 1 })
