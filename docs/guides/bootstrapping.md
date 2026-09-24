@@ -16,7 +16,7 @@ multiple `int` parameters, nested `if`/`else` and `while` blocks, mutable
 assignments, scalar `match` arms, and transitive imports whose definitions fit
 the same subset.
 The scalar path also supports grouped and inline `if` expressions with
-integer or Boolean branches.
+integer, Boolean, or string branches, string locals and typed string results.
 It cannot yet compile itself: collections, enums, non-scalar pattern matching, string
 interpolation, generic signatures, and broader standard library calls are
 still outside the bridge. The CI gate in `tools/qa/test_bootstrap_stages.sh` requires Stage 1 to

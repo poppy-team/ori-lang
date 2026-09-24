@@ -165,7 +165,7 @@ public run_full_pipeline(content: string, out_path: string) -> PipelineResult
         const fn_name = lists.get(parsed_file.func_names, k)
         const fn_ret = lists.get(parsed_file.func_ret_tys, k)
         const param_count = lists.get(parsed_file.func_param_counts, k)
-        if param_count > 8 or (fn_name == "main" and param_count != 0) or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "void")
+        if param_count > 8 or (fn_name == "main" and param_count != 0) or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "string" and fn_ret != "void")
             codegen_supported = false
             io.println(f"CODEGEN_UNSUPPORTED_SIGNATURE: {fn_name} params={param_count} return={fn_ret}")
         end

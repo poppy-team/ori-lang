@@ -18,6 +18,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or mistyped patterns are rejected before native code generation. Bootstrap
   fixtures compare stage0 and stage1 execution and cover a match in a
   transitive imported function. Composite patterns remain unsupported.
+- String locals and assignments, typed functions returning strings, and
+  printing a string variable or result of a typed call now carry their value
+  through the bridge. The bootstrap compares the native output with Stage 0.
 - Stage 1 now escapes decoded UTF-8 strings correctly in bridge JSON,
   preserving quote characters, tabs, and newlines. Bytes literals and
   unsupported or malformed string escapes fail instead of emitting a

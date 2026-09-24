@@ -198,7 +198,7 @@ fn callable_functions(module: &SerializedModule) -> CallableSignatures {
                 && f.name != "println"
                 && f.params.len() <= 8
                 && f.params.iter().all(|p| p.ty == SerializedTy::Int)
-                && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool)
+                && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String)
         })
         .map(|f| {
             (
@@ -372,12 +372,13 @@ fn validate_expr(
             if !matches!(callee.as_str(), "println" | "io.println" | "ori.io.println") {
                 return Err(format!("call to {callee} requires a typed function signature"));
             }
-            if args.len() > 1
-                || args
-                    .iter()
-                    .any(|arg| !matches!(arg, SerializedExpr::StrLit(_)))
-            {
-                return Err("println requires zero or one string literal in protocol v1".to_string());
+            if args.len() > 1 {
+                return Err("println requires zero or one string argument".to_string());
+            }
+            if let Some(arg) = args.first() {
+                if validate_expr(arg, locals, callable)? != SerializedTy::String {
+                    return Err("println argument must be a string".to_string());
+                }
             }
             Ok(SerializedTy::Void)
         }
@@ -387,7 +388,7 @@ fn validate_expr(
             }
             let then_ty = validate_expr(then_expr, locals, callable)?;
             if then_ty != validate_expr(else_expr, locals, callable)?
-                || !matches!(&then_ty, SerializedTy::Int | SerializedTy::Bool)
+                || !matches!(&then_ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String)
             {
                 return Err("if-expression branches must have the same supported type".to_string());
             }
@@ -422,7 +423,7 @@ fn validate_expr(
         SerializedExpr::StrLit(_) => Ok(SerializedTy::String),
         SerializedExpr::BoolLit(_) => Ok(SerializedTy::Bool),
         SerializedExpr::Var(name) => match locals.get(name) {
-            Some(ty) if *ty == SerializedTy::Int || *ty == SerializedTy::Bool => Ok(ty.clone()),
+            Some(ty) if matches!(ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String) => Ok(ty.clone()),
             Some(_) => Err(format!("variable {name} requires typed lowering")),
             None => Err(format!("undefined variable: {name}")),
         },

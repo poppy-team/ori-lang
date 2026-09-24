@@ -1,5 +1,7 @@
 module tests.fixtures.selfhost_modules.match_root
 import tests.fixtures.selfhost_modules.match_middle as middle
+import ori.io as io
 main() -> int
+    io.println(middle.greet(1))
     return middle.value(42) - 42
 end

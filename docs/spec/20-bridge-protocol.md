@@ -19,7 +19,9 @@ exist as library functions, but the self-host client does not use framed IPC.
 The current scalar subset includes nested `If`/`While`/`Match`, `elif` chains lowered
 to nested `If` nodes in the preceding `else` branch, `Let` mutability,
 `Assign`, `Break`/`Continue`, and typed local calls with up to eight integer
-parameters. The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
+parameters and integer, Boolean, or string results. String locals, string
+returns, and `println` of a typed string expression retain their type.
+The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
 minus to integer subtraction from zero. Scalar `Match` accepts `IntLit`,
 `BoolLit`, and a final `Wildcard` arm; integer matches require a wildcard,
 Boolean matches require either both literals or a wildcard. Every arm has a

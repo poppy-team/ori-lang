@@ -7,3 +7,6 @@ public choose(n: int) -> int
         return n
     end
 end
+public greeting(n: int) -> string
+    return if n == 1 then "transitive string" else "missing"
+end

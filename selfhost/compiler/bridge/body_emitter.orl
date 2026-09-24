@@ -107,7 +107,27 @@ public can_emit_bool_expr(pool: exprs.ExprPool, id: int, int_names: list[string]
     return false
 end
 
-public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string) -> bool
+can_emit_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 2
+        return true
+    end
+    if tag == 4
+        return contains_name(string_names, lists.get(pool.str_vals, id))
+    end
+    if tag == 6
+        return can_emit_local_call(pool, id, int_names, bool_names, func_names, func_ret_tys, func_param_counts, "string")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+    end
+    return false
+end
+
+public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
     if id < 0 or id >= lists.len(pool.kind_tags)
         return false
     end
@@ -126,7 +146,7 @@ public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string) -> bool
         return false
     end
     const arg_id = lists.get(pool.call_arg_ids, lists.get(pool.call_arg_starts, id))
-    return arg_id >= 0 and arg_id < lists.len(pool.kind_tags) and lists.get(pool.kind_tags, arg_id) == 2
+    return can_emit_string_expr(pool, arg_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
 end
 
 public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, param_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
@@ -135,6 +155,7 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
     end
     const int_names: list[string] = []
     const bool_names: list[string] = []
+    const string_names: list[string] = []
     const mutable_names: list[string] = []
     var param_idx = 0
     while param_idx < lists.len(param_names)
@@ -149,7 +170,7 @@ public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, 
         lists.push(int_names, name)
         param_idx = param_idx + 1
     end
-    return can_emit_block(sp, pool, start_idx, end_idx, ret_ty, io_alias, int_names, bool_names, mutable_names, func_names, func_ret_tys, func_param_counts, false)
+    return can_emit_block(sp, pool, start_idx, end_idx, ret_ty, io_alias, int_names, bool_names, string_names, mutable_names, func_names, func_ret_tys, func_param_counts, false)
 end
 
 copy_names(names: list[string]) -> list[string]
@@ -173,7 +194,7 @@ contains_name(names: list[string], target: string) -> bool
     return false
 end
 
-can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, int_names: list[string], bool_names: list[string], mutable_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], in_loop: bool) -> bool
+can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, int_names: list[string], bool_names: list[string], string_names: list[string], mutable_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], in_loop: bool) -> bool
     if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
         return false
     end
@@ -189,21 +210,24 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
             if tag == 1
                 const is_int = can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
-                if not is_int and not is_bool
+                const is_string = can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                if not is_int and not is_bool and not is_string
                     return false
                 end
                 const annotated = lists.get(sp.type_annotations, i)
-                if (is_int and annotated != "" and annotated != "int") or (is_bool and annotated != "" and annotated != "bool")
+                if (is_int and annotated != "" and annotated != "int") or (is_bool and annotated != "" and annotated != "bool") or (is_string and annotated != "" and annotated != "string")
                     return false
                 end
                 const target = lists.get(sp.target_names, i)
-                if target == "" or contains_name(int_names, target) or contains_name(bool_names, target)
+                if target == "" or contains_name(int_names, target) or contains_name(bool_names, target) or contains_name(string_names, target)
                     return false
                 end
                 if is_int
                     lists.push(int_names, target)
-                else
+                elif is_bool
                     lists.push(bool_names, target)
+                else
+                    lists.push(string_names, target)
                 end
                 if lists.get(sp.mutable_flags, i) == 1
                     lists.push(mutable_names, target)
@@ -216,12 +240,16 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
+            elif ret_ty == "string"
+                if not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
             elif ret_ty == "void" and expr_id == -1
             else
                 return false
             end
         elif tag == 3
-            if not can_emit_print(pool, expr_id, io_alias) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+            if not can_emit_print(pool, expr_id, io_alias, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
         elif tag == 4
@@ -232,17 +260,17 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
             if else_idx < i + 1 or else_idx > next_idx
                 return false
             end
-            if not can_emit_block(sp, pool, i + 1, else_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+            if not can_emit_block(sp, pool, i + 1, else_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
                 return false
             end
-            if not can_emit_block(sp, pool, else_idx, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+            if not can_emit_block(sp, pool, else_idx, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
                 return false
             end
         elif tag == 5
             if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 return false
             end
-            if not can_emit_block(sp, pool, i + 1, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, true)
+            if not can_emit_block(sp, pool, i + 1, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, true)
                 return false
             end
         elif tag == 9
@@ -295,7 +323,7 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 else
                     return false
                 end
-                if not can_emit_block(sp, pool, arm + 1, arm_end, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+                if not can_emit_block(sp, pool, arm + 1, arm_end, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
                     return false
                 end
                 arm_count = arm_count + 1
@@ -315,6 +343,10 @@ can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx
                 end
             elif contains_name(bool_names, target)
                 if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif contains_name(string_names, target)
+                if not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
                     return false
                 end
             else
@@ -464,15 +496,16 @@ public emit_range_stmts_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx
 
     const int_names: list[string] = []
     const bool_names: list[string] = []
+    const string_names: list[string] = []
     var param_idx = 0
     while param_idx < lists.len(param_names)
         lists.push(int_names, lists.get(param_names, param_idx))
         param_idx = param_idx + 1
     end
-    return emit_block_json(sp, pool, start_idx, end_idx, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    return emit_block_json(sp, pool, start_idx, end_idx, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
 end
 
-emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, int_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> string
+emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> string
     const stmts_out: list[string] = []
     var i = start_idx
     while i < end_idx
@@ -485,6 +518,9 @@ emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_id
             if can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
                 ty = "Bool"
                 lists.push(bool_names, target)
+            elif can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                ty = "String"
+                lists.push(string_names, target)
             else
                 lists.push(int_names, target)
             end
@@ -501,12 +537,12 @@ emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_id
         elif tag == 4
             const else_idx = lists.get(sp.branch_starts, i)
             const subtree_end = lists.get(sp.subtree_ends, i)
-            const then_json = emit_block_json(sp, pool, i + 1, else_idx, copy_names(int_names), copy_names(bool_names), func_names, func_ret_tys, func_param_counts)
-            const else_json = emit_block_json(sp, pool, else_idx, subtree_end, copy_names(int_names), copy_names(bool_names), func_names, func_ret_tys, func_param_counts)
+            const then_json = emit_block_json(sp, pool, i + 1, else_idx, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
+            const else_json = emit_block_json(sp, pool, else_idx, subtree_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
             s = "{\"If\":{\"cond\":" + emit_expr_json(pool, expr_id) + ",\"then_stmts\":[" + then_json + "],\"else_stmts\":[" + else_json + "]}}"
         elif tag == 5
             const subtree_end = lists.get(sp.subtree_ends, i)
-            const body_json = emit_block_json(sp, pool, i + 1, subtree_end, copy_names(int_names), copy_names(bool_names), func_names, func_ret_tys, func_param_counts)
+            const body_json = emit_block_json(sp, pool, i + 1, subtree_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
             s = "{\"While\":{\"cond\":" + emit_expr_json(pool, expr_id) + ",\"body_stmts\":[" + body_json + "]}}"
         elif tag == 9
             const arms_json: list[string] = []
@@ -523,7 +559,7 @@ emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_id
                     end
                 end
                 const arm_end = lists.get(sp.subtree_ends, arm)
-                const body_json = emit_block_json(sp, pool, arm + 1, arm_end, copy_names(int_names), copy_names(bool_names), func_names, func_ret_tys, func_param_counts)
+                const body_json = emit_block_json(sp, pool, arm + 1, arm_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
                 lists.push(arms_json, "{\"pattern\":" + pattern_json + ",\"body_stmts\":[" + body_json + "]}")
                 arm = arm_end
             end

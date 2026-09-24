@@ -73,6 +73,9 @@ public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> strin
         if rtype == "bool"
             bridge_ret = "Bool"
         end
+        if rtype == "string"
+            bridge_ret = "String"
+        end
         const fjson = f"{{\"name\":\"{fname}\",\"params\":[{params}],\"return_ty\":\"{bridge_ret}\",\"body_stmts\":[{body}],\"is_public\":true}}"
         lists.push(funcs_json, fjson)
         i = i + 1

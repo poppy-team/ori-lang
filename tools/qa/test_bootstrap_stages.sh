@@ -106,6 +106,42 @@ strings = [stmt["Expr"]["Call"]["args"][0]["StrLit"] for stmt in body]
 assert strings == ['"wrapped"', "line one\nline two", "café\t開発"], strings
 PY
 
+cat > "$work/string-flow.orl" <<'ORI'
+module bootstrap.string_flow
+import ori.io as io
+main()
+    var message: string = "first"
+    io.println(message)
+    message = label(2)
+    io.println(message)
+    io.println(label(1))
+end
+label(n: int) -> string
+    return if n == 1 then "café" else "second"
+end
+ORI
+echo 'Stage 0/1: string locals, mutation, and typed call results'
+"$stage0" compile "$work/string-flow.orl" -o "$work/string-flow-stage0"
+"$work/ori-stage1" compile "$work/string-flow.orl" -o "$work/string-flow-stage1"
+"$work/string-flow-stage0" > "$work/string-flow-stage0.stdout"
+"$work/string-flow-stage1" > "$work/string-flow-stage1.stdout"
+cmp "$work/string-flow-stage0.stdout" "$work/string-flow-stage1.stdout"
+python3 - "$work/string-flow-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert funcs[0]["body_stmts"][0]["Let"]["ty"] == "String", funcs
+assert funcs[0]["body_stmts"][2]["Assign"]["value"] == {
+    "Call": {"callee": "label", "args": [{"IntLit": 2}]}
+}, funcs
+assert funcs[0]["body_stmts"][3]["Expr"]["Call"]["args"] == [
+    {"Var": "message"}
+], funcs
+assert funcs[1]["return_ty"] == "String", funcs
+PY
+
 # Preserve the operator and return signature in the bridge request. Previously
 # the lexer discarded `->` and the flat expression pool serialized `*`/`-` as
 # `+`, allowing a different program to pass a simple compile smoke check.
@@ -565,8 +601,9 @@ PY
 echo 'Stage 0/1: match inside a transitive imported definition'
 "$stage0" compile "$repo/tests/fixtures/selfhost_modules/match_root.orl" -o "$work/import-match-stage0"
 "$work/ori-stage1" compile "$repo/tests/fixtures/selfhost_modules/match_root.orl" -o "$work/import-match-stage1"
-"$work/import-match-stage0"
-"$work/import-match-stage1"
+"$work/import-match-stage0" > "$work/import-match-stage0.stdout"
+"$work/import-match-stage1" > "$work/import-match-stage1.stdout"
+cmp "$work/import-match-stage0.stdout" "$work/import-match-stage1.stdout"
 python3 - "$work/import-match-stage1.tmp.o.req.json" <<'PY'
 import json
 import sys
@@ -576,9 +613,12 @@ with open(sys.argv[1], encoding="utf-8") as request_file:
 assert [f["name"] for f in funcs] == [
     "main",
     "tests.fixtures.selfhost_modules.match_middle.value",
+    "tests.fixtures.selfhost_modules.match_middle.greet",
     "tests.fixtures.selfhost_modules.match_leaf.choose",
+    "tests.fixtures.selfhost_modules.match_leaf.greeting",
 ], funcs
-assert funcs[2]["body_stmts"][0]["Match"]["arms"][1]["pattern"] == "Wildcard", funcs
+assert funcs[3]["body_stmts"][0]["Match"]["arms"][1]["pattern"] == "Wildcard", funcs
+assert funcs[4]["return_ty"] == "String", funcs
 PY
 
 for case in cycle_root missing_leaf private_member; do

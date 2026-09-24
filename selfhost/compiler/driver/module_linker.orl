@@ -223,7 +223,7 @@ public append_imported_functions(catalog: ModuleCatalog, module_ir: hn.HirModule
             const param_jsons: list[string] = []
             const env = te.new_env()
             var k = 0
-            if count > 8 or (ret_ty != "int" and ret_ty != "bool" and ret_ty != "void")
+            if count > 8 or (ret_ty != "int" and ret_ty != "bool" and ret_ty != "string" and ret_ty != "void")
                 supported = false
             end
             while k < count

@@ -3,3 +3,6 @@ import tests.fixtures.selfhost_modules.match_leaf as leaf
 public value(n: int) -> int
     return leaf.choose(n)
 end
+public greet(n: int) -> string
+    return leaf.greeting(n)
+end
