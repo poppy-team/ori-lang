@@ -144,6 +144,28 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
     case False:
         const id = alloc_expr_raw(pool, 3, -1, -1, "false")
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case Not:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 70)
+        case some(operand):
+            -- Preserve short-circuit semantics using the bridge's typed
+            -- Boolean conditional expression.
+            const no_id = alloc_expr_raw(pool, 3, -1, -1, "false")
+            const yes_id = alloc_expr_raw(pool, 3, -1, -1, "true")
+            const id = alloc_expr_raw(pool, 11, operand.expr_id, no_id, "if_expr")
+            lists.set(pool.third_ids, id, yes_id)
+            return some(ParseExprOut { expr_id: id, next_cursor: operand.next_cursor })
+        case none:
+            return none
+        end
+    case Minus:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 70)
+        case some(operand):
+            const zero = alloc_expr_raw(pool, 1, -1, -1, "0")
+            const id = alloc_expr_raw(pool, 5, zero, operand.expr_id, "-")
+            return some(ParseExprOut { expr_id: id, next_cursor: operand.next_cursor })
+        case none:
+            return none
+        end
     case None:
         const id = alloc_expr_raw(pool, 0, -1, -1, "none")
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })

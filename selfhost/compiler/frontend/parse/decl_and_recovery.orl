@@ -34,6 +34,16 @@ inline_if_at(tokens: list[tok.Token], cursor: int) -> bool
     case Minus: return true
     case Star: return true
     case Slash: return true
+    case Percent: return true
+    case Not: return true
+    case And: return true
+    case Or: return true
+    case EqEq: return true
+    case BangEq: return true
+    case Lt: return true
+    case LtEq: return true
+    case Gt: return true
+    case GtEq: return true
     case Colon: return true
     case else: return false
     end

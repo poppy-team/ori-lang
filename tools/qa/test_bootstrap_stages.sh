@@ -357,6 +357,81 @@ assert conditional["then_stmts"][0]["Assign"]["name"] == "value", conditional
 assert conditional["else_stmts"][0]["Assign"]["name"] == "value", conditional
 PY
 
+cat > "$work/elif-chain.orl" <<'ORI'
+module bootstrap.elif_chain
+import ori.io as io
+main() -> int
+    var value = 0
+    while value < 4
+        if value == 0
+            io.println("first")
+            value = value + 1
+        elif value == 1
+            io.println("second")
+            value = value + 1
+        elif value == 2
+            io.println("third")
+            value = value + 1
+        else
+            io.println("last")
+            value = value + 1
+        end
+    end
+    return value - 4
+end
+ORI
+echo 'Stage 0/1: elif chain in a nested loop'
+"$stage0" compile "$work/elif-chain.orl" -o "$work/elif-chain-stage0"
+"$work/ori-stage1" compile "$work/elif-chain.orl" -o "$work/elif-chain-stage1"
+timeout 10s "$work/elif-chain-stage0" > "$work/elif-chain-stage0.stdout"
+timeout 10s "$work/elif-chain-stage1" > "$work/elif-chain-stage1.stdout"
+cmp "$work/elif-chain-stage0.stdout" "$work/elif-chain-stage1.stdout"
+python3 - "$work/elif-chain-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+branch = body[1]["While"]["body_stmts"][0]["If"]
+for name in ("second", "third"):
+    nested = branch["else_stmts"]
+    assert len(nested) == 1 and "If" in nested[0], nested
+    branch = nested[0]["If"]
+    assert branch["then_stmts"][0]["Expr"]["Call"]["args"] == [{"StrLit": name}], branch
+assert len(branch["else_stmts"]) == 2, branch
+PY
+
+cat > "$work/unary-expr.orl" <<'ORI'
+module bootstrap.unary_expr
+import ori.io as io
+main() -> int
+    const value = -(2 + 3)
+    const ready = not (value != -5)
+    if ready
+        io.println("unary operators executed")
+    end
+    return value + 5
+end
+ORI
+echo 'Stage 0/1: unary minus and Boolean not'
+"$stage0" compile "$work/unary-expr.orl" -o "$work/unary-expr-stage0"
+"$work/ori-stage1" compile "$work/unary-expr.orl" -o "$work/unary-expr-stage1"
+"$work/unary-expr-stage0" > "$work/unary-expr-stage0.stdout"
+"$work/unary-expr-stage1" > "$work/unary-expr-stage1.stdout"
+cmp "$work/unary-expr-stage0.stdout" "$work/unary-expr-stage1.stdout"
+python3 - "$work/unary-expr-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+negated = body[0]["Let"]["value"]["Binary"]
+assert negated["op"] == "Sub" and negated["left"] == {"IntLit": 0}, negated
+inverted = body[1]["Let"]["value"]["IfExpr"]
+assert inverted["then_expr"] == {"BoolLit": False}, inverted
+assert inverted["else_expr"] == {"BoolLit": True}, inverted
+PY
+
 cat > "$work/multi-arg-expr.orl" <<'ORI'
 module bootstrap.multi_arg_expr
 add(a: int, b: int) -> int

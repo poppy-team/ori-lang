@@ -220,6 +220,12 @@ parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: Stmt
             end
             alloc_stmt_raw(sp, 0, -1, "unexpected_else")
             cur = cur + 1
+        case Elif:
+            if allow_else
+                return cur
+            end
+            alloc_stmt_raw(sp, 0, -1, "unexpected_elif")
+            cur = cur + 1
         case else:
             match parse_statement(tokens, cur, pool, sp)
             case some(out):
@@ -238,32 +244,51 @@ parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: Stmt
     return cur
 end
 
-public parse_if(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
+-- An elif is the else branch of the previous conditional and has no End of
+-- its own. Store it as a nested If, leaving the shared End for the caller.
+parse_if_branch(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
     match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
     case some(cond_out):
         const stmt_id = alloc_stmt_raw(sp, 4, cond_out.expr_id, "")
         var cur = parse_block(tokens, cond_out.next_cursor, pool, sp, true)
+        lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
         if cur < lists.len(tokens)
             const boundary = lists.get(tokens, cur)
             match boundary.kind
             case Else:
-                lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
                 cur = parse_block(tokens, cur + 1, pool, sp, false)
+            case Elif:
+                match parse_if_branch(tokens, cur, pool, sp)
+                case some(out):
+                    cur = out.next_cursor
+                case none:
+                    alloc_stmt_raw(sp, 0, -1, "invalid_elif")
+                    cur = cur + 1
+                end
             case else:
-                lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
             end
         end
         lists.set(sp.subtree_ends, stmt_id, lists.len(sp.kind_tags))
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur })
+    case none:
+        return none
+    end
+end
+
+public parse_if(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
+    match parse_if_branch(tokens, cursor, pool, sp)
+    case some(out):
+        const cur = out.next_cursor
         if cur < lists.len(tokens)
             const closing = lists.get(tokens, cur)
             match closing.kind
             case End:
-                return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur + 1 })
+                return some(ParseStmtOut { stmt_id: out.stmt_id, next_cursor: cur + 1 })
             case else:
             end
         end
         alloc_stmt_raw(sp, 0, -1, "unterminated_if")
-        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur })
+        return some(out)
     case none:
         return none
     end

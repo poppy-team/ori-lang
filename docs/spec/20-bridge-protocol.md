@@ -16,10 +16,13 @@ This chapter specifies the versioned framing protocol and data schema exchanged 
 accepts `--request-file <path>` containing an unframed JSON
 `CompileModuleRequest` and constructs the envelope itself. The framing helpers
 exist as library functions, but the self-host client does not use framed IPC.
-The current scalar subset includes nested `If`/`While`, `Let` mutability,
+The current scalar subset includes nested `If`/`While`, `elif` chains lowered
+to nested `If` nodes in the preceding `else` branch, `Let` mutability,
 `Assign`, `Break`/`Continue`, and typed local calls with up to eight integer
-parameters. The bridge checks scope, types, mutability, and loop placement
-before lowering these nodes. Collections, structural types, generics, and
+parameters. The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
+minus to integer subtraction from zero. The bridge checks scope, types,
+mutability, and loop placement before lowering these nodes. Collections,
+structural types, generics, and
 pattern matching remain outside this protocol implementation; this is not a
 complete HIR, nor a production bootstrap contract. The proposed ADR-0006
 describes the intended architecture. The schemas and timeouts below describe

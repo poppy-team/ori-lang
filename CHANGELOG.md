@@ -12,6 +12,11 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 preserves chained `elif` arms as nested conditional branches in
+  the native request. The bootstrap gate compares each arm's execution with
+  Stage 0 and checks that the bridge request retains all branches. Unary
+  `not` and minus retain their meaning through Boolean conditions and integer
+  subtraction, with a native parity fixture.
 - Stage 1 now preserves nested `if`/`else` and `while` bodies, mutable local
   assignments, and `break`/`continue` through the bridge. Calls can carry up
   to eight integer arguments and grouped arithmetic expressions. Transitive

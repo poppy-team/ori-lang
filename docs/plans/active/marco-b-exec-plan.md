@@ -93,6 +93,12 @@ started: 2026-09-07
 > `and`, `or` e bytes inválidos. A autocompilação ainda recusa o IR não
 > representado; stage2 e stage3 não foram gerados.
 
+> A próxima revisão preserva cadeias `elif` como ramos `else` aninhados e
+> operadores unários `not` e menos. Inclui casos nativos para executar os
+> ramos e checar os operandos. A validação no CI ainda é
+> necessária; a autocompilação continua bloqueada pelas construções fora da
+> bridge escalar.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 
