@@ -23,7 +23,7 @@ parameters and integer, Boolean, or string results. String locals, string
 returns, and `println` of a typed string expression retain their type.
 The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
 minus to integer subtraction from zero. Scalar `Match` statements and
-`MatchExpr` expressions accept `IntLit`,
+`MatchExpr` expressions accept signed `IntLit`,
 `BoolLit`, and a final `Wildcard` arm; integer matches require a wildcard,
 Boolean matches require either both literals or a wildcard. Statement arms
 have isolated statement lists and retain the enclosing loop context;

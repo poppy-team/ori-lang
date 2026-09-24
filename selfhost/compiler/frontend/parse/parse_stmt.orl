@@ -344,9 +344,22 @@ public parse_match(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, s
                 const pattern = lists.get(tokens, cur + 1)
                 var pat_id = -1
                 var wildcard = ""
+                var separator_cursor = cur + 2
                 match pattern.kind
                 case IntLit(raw):
                     pat_id = exprs.alloc_expr_raw(pool, 1, -1, -1, raw)
+                case Minus:
+                    if cur + 3 >= lists.len(tokens)
+                        return none
+                    end
+                    const signed = lists.get(tokens, cur + 2)
+                    match signed.kind
+                    case IntLit(raw):
+                        pat_id = exprs.alloc_expr_raw(pool, 1, -1, -1, "-" + raw)
+                        separator_cursor = cur + 3
+                    case else:
+                        return none
+                    end
                 case True:
                     pat_id = exprs.alloc_expr_raw(pool, 3, -1, -1, "true")
                 case False:
@@ -362,14 +375,14 @@ public parse_match(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, s
                 if pat_id == -1 and wildcard == ""
                     return none
                 end
-                const separator = lists.get(tokens, cur + 2)
+                const separator = lists.get(tokens, separator_cursor)
                 match separator.kind
                 case Colon:
                 case else:
                     return none
                 end
                 const arm_id = alloc_stmt_raw(sp, 10, pat_id, wildcard)
-                cur = parse_block(tokens, cur + 3, pool, sp, false, true)
+                cur = parse_block(tokens, separator_cursor + 1, pool, sp, false, true)
                 lists.set(sp.subtree_ends, arm_id, lists.len(sp.kind_tags))
                 arm_count = arm_count + 1
             case else:

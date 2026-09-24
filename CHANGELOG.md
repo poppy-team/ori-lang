@@ -19,7 +19,8 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixtures compare stage0 and stage1 execution and cover a match in a
   transitive imported function. Composite patterns remain unsupported.
 - Scalar `match` expressions preserve integer and Boolean patterns with
-  exhaustive branches, including string results. A native parity fixture
+  exhaustive branches, including string results and signed integer patterns.
+  A native parity fixture
   compares their execution and checks the bridge payload.
 - String locals and assignments, typed functions returning strings, and
   printing a string variable or result of a typed call now carry their value
@@ -38,7 +39,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to eight integer arguments and grouped arithmetic expressions. Transitive
   module discovery checks missing files, namespace mismatches, cycles, and
   visibility; compatible imported scalar functions are linked into the same
-  native module. The bootstrap gate compares these cases with Stage 0. Full
+  native module. A diamond import fixture checks that a shared function is
+  linked once and both parents call it. The bootstrap gate compares these
+  cases with Stage 0. Full
   self-compilation still needs collections, generics, enum patterns, string
   interpolation, and their standard library/runtime operations.
 - The parser now retains generic and qualified type signatures, handles

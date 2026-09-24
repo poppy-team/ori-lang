@@ -193,6 +193,40 @@ if "$work/ori-stage1" check "$work/nonexhaustive-match-expr.orl" > "$work/nonexh
 fi
 grep -q 'type.nonexhaustive_match' "$work/nonexhaustive-match-expr.log"
 
+cat > "$work/signed-match.orl" <<'ORI'
+module bootstrap.signed_match
+import ori.io as io
+main()
+    const n = -1
+    match n
+    case -1:
+        io.println("negative statement")
+    case else:
+        io.println("other")
+    end
+    const text = match n
+        case -1: "negative expression"
+        case else: "other"
+    end
+    io.println(text)
+end
+ORI
+echo 'Stage 0/1: signed integer patterns in match statements and expressions'
+"$stage0" compile "$work/signed-match.orl" -o "$work/signed-match-stage0"
+"$work/ori-stage1" compile "$work/signed-match.orl" -o "$work/signed-match-stage1"
+"$work/signed-match-stage0" > "$work/signed-match-stage0.stdout"
+"$work/signed-match-stage1" > "$work/signed-match-stage1.stdout"
+cmp "$work/signed-match-stage0.stdout" "$work/signed-match-stage1.stdout"
+python3 - "$work/signed-match-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+assert body[1]["Match"]["arms"][0]["pattern"] == {"IntLit": -1}, body
+assert body[2]["Let"]["value"]["MatchExpr"]["arms"][0]["pattern"] == {"IntLit": -1}, body
+PY
+
 # Preserve the operator and return signature in the bridge request. Previously
 # the lexer discarded `->` and the flat expression pool serialized `*`/`-` as
 # `+`, allowing a different program to pass a simple compile smoke check.
@@ -670,6 +704,27 @@ assert [f["name"] for f in funcs] == [
 ], funcs
 assert funcs[3]["body_stmts"][0]["Match"]["arms"][1]["pattern"] == "Wildcard", funcs
 assert funcs[4]["return_ty"] == "String", funcs
+PY
+
+echo 'Stage 0/1: diamond imports link a shared definition once'
+"$stage0" compile "$repo/tests/fixtures/selfhost_modules/diamond_root.orl" -o "$work/diamond-stage0"
+"$work/ori-stage1" compile "$repo/tests/fixtures/selfhost_modules/diamond_root.orl" -o "$work/diamond-stage1"
+"$work/diamond-stage0"
+"$work/diamond-stage1"
+python3 - "$work/diamond-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert [f["name"] for f in funcs] == [
+    "main",
+    "tests.fixtures.selfhost_modules.diamond_left.compute",
+    "tests.fixtures.selfhost_modules.diamond_right.compute",
+    "tests.fixtures.selfhost_modules.diamond_shared.value",
+], funcs
+assert funcs[1]["body_stmts"][0]["Return"]["Add"][0]["Call"]["callee"] == funcs[3]["name"], funcs
+assert funcs[2]["body_stmts"][0]["Return"]["Add"][0]["Call"]["callee"] == funcs[3]["name"], funcs
 PY
 
 for case in cycle_root missing_leaf private_member; do

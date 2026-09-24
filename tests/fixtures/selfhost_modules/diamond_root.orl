@@ -1,0 +1,6 @@
+module tests.fixtures.selfhost_modules.diamond_root
+import tests.fixtures.selfhost_modules.diamond_left as left
+import tests.fixtures.selfhost_modules.diamond_right as right
+main() -> int
+    return left.compute(19) + right.compute(20) - 42
+end

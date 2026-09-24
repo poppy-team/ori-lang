@@ -114,6 +114,15 @@ started: 2026-09-07
 > O parser e a bridge também recebem `match` escalar como expressão, com
 > braços homogêneos e cobertura validada; a comparação de execução nativa
 > com stage0 e a requisição de bridge cobrem retornos de `int` e `string`.
+> Um grafo de imports em diamante verifica a deduplicação de uma definição
+> compartilhada e as chamadas provenientes de ambos os módulos pais.
+
+> Execução 212: `match` como expressão produziu binário nativo e a mesma saída
+> do stage0 nos ramos de `string` e `int`. A versão anterior já havia validado
+> strings mutáveis e retorno string transitivo na execução 211. O gate de
+> bootstrap ainda reprova na compilação de `selfhost/compiler/main.orl` pelo
+> stage1: `cmd_args.all`, listas e as definições importadas com tipos compostos
+> não cabem na IR atual; `BRIDGE_PAYLOAD_BYTES: 0`, sem stage2 ou stage3.
 
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.

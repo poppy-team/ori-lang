@@ -1,0 +1,4 @@
+module tests.fixtures.selfhost_modules.diamond_shared
+public value(n: int) -> int
+    return n
+end
