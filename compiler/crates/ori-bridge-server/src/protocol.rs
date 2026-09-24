@@ -88,6 +88,10 @@ pub enum SerializedExpr {
         then_expr: Box<SerializedExpr>,
         else_expr: Box<SerializedExpr>,
     },
+    MatchExpr {
+        scrutinee: Box<SerializedExpr>,
+        arms: Vec<SerializedExprArm>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -95,6 +99,12 @@ pub enum SerializedPattern {
     IntLit(i64),
     BoolLit(bool),
     Wildcard,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerializedExprArm {
+    pub pattern: SerializedPattern,
+    pub body: SerializedExpr,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

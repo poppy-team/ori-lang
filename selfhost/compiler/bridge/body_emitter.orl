@@ -39,6 +39,10 @@ public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string
     if tag == 11
         return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.third_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
+    if tag == 13
+        const no_strings: list[string] = []
+        return can_emit_match_expr(pool, id, "int", local_names, bool_names, no_strings, func_names, func_ret_tys, func_param_counts)
+    end
     return false
 end
 
@@ -95,6 +99,10 @@ public can_emit_bool_expr(pool: exprs.ExprPool, id: int, int_names: list[string]
     if tag == 11
         return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
     end
+    if tag == 13
+        const no_strings: list[string] = []
+        return can_emit_match_expr(pool, id, "bool", int_names, bool_names, no_strings, func_names, func_ret_tys, func_param_counts)
+    end
     if tag == 5
         const op = lists.get(pool.str_vals, id)
         if op == "and" or op == "or"
@@ -124,7 +132,79 @@ can_emit_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string], boo
     if tag == 11
         return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
     end
+    if tag == 13
+        return can_emit_match_expr(pool, id, "string", int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+    end
     return false
+end
+
+can_emit_match_expr(pool: exprs.ExprPool, id: int, result_ty: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    const scrutinee_id = lists.get(pool.left_ids, id)
+    const is_int = can_emit_int_expr(pool, scrutinee_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    const is_bool = can_emit_bool_expr(pool, scrutinee_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    if not is_int and not is_bool
+        return false
+    end
+    const count = lists.get(pool.call_arg_counts, id)
+    const first = lists.get(pool.call_arg_starts, id)
+    if first < 0 or count < 2 or count % 2 != 0
+        return false
+    end
+    var has_wildcard = false
+    var has_true = false
+    var has_false = false
+    const int_patterns: list[string] = []
+    var arm = 0
+    while arm < count
+        if has_wildcard
+            return false
+        end
+        const pattern = lists.get(pool.call_arg_ids, first + arm)
+        const value = lists.get(pool.call_arg_ids, first + arm + 1)
+        if pattern == -1
+            has_wildcard = true
+        elif pattern < 0 or pattern >= lists.len(pool.kind_tags)
+            return false
+        elif is_int and lists.get(pool.kind_tags, pattern) == 1
+            const raw = lists.get(pool.str_vals, pattern)
+            if contains_name(int_patterns, raw)
+                return false
+            end
+            lists.push(int_patterns, raw)
+        elif is_bool and lists.get(pool.kind_tags, pattern) == 3
+            if lists.get(pool.str_vals, pattern) == "true"
+                if has_true
+                    return false
+                end
+                has_true = true
+            end
+            if lists.get(pool.str_vals, pattern) == "false"
+                if has_false
+                    return false
+                end
+                has_false = true
+            end
+        else
+            return false
+        end
+        if result_ty == "int"
+            if not can_emit_int_expr(pool, value, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        elif result_ty == "bool"
+            if not can_emit_bool_expr(pool, value, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        elif result_ty == "string"
+            if not can_emit_string_expr(pool, value, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        else
+            return false
+        end
+        arm = arm + 2
+    end
+    return has_wildcard or (is_bool and has_true and has_false)
 end
 
 public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
@@ -434,6 +514,26 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
         const then_json = emit_expr_json(pool, lists.get(pool.right_ids, id))
         const else_json = emit_expr_json(pool, lists.get(pool.third_ids, id))
         return "{\"IfExpr\":{\"cond\":" + cond_json + ",\"then_expr\":" + then_json + ",\"else_expr\":" + else_json + "}}"
+    elif tag == 13
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        const arms: list[string] = []
+        var arm = 0
+        while arm < count
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            var pattern_json = "\"Wildcard\""
+            if pat_id >= 0
+                if lists.get(pool.kind_tags, pat_id) == 1
+                    pattern_json = "{\"IntLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                else
+                    pattern_json = "{\"BoolLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                end
+            end
+            const value = lists.get(pool.call_arg_ids, first + arm + 1)
+            lists.push(arms, "{\"pattern\":" + pattern_json + ",\"body\":" + emit_expr_json(pool, value) + "}")
+            arm = arm + 2
+        end
+        return "{\"MatchExpr\":{\"scrutinee\":" + emit_expr_json(pool, lists.get(pool.left_ids, id)) + ",\"arms\":[" + su.join(arms, ",") + "]}}"
     end
 
     return "{\"IntLit\":0}"

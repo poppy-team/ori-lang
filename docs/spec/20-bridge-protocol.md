@@ -22,11 +22,13 @@ to nested `If` nodes in the preceding `else` branch, `Let` mutability,
 parameters and integer, Boolean, or string results. String locals, string
 returns, and `println` of a typed string expression retain their type.
 The Ori client lowers unary `not` to a Boolean `IfExpr` and unary
-minus to integer subtraction from zero. Scalar `Match` accepts `IntLit`,
+minus to integer subtraction from zero. Scalar `Match` statements and
+`MatchExpr` expressions accept `IntLit`,
 `BoolLit`, and a final `Wildcard` arm; integer matches require a wildcard,
-Boolean matches require either both literals or a wildcard. Every arm has a
-list of statements, isolated local scope, and preserves the enclosing loop
-context. The bridge rejects duplicate, mismatched, or incomplete patterns
+Boolean matches require either both literals or a wildcard. Statement arms
+have isolated statement lists and retain the enclosing loop context;
+expression arms yield values of one shared scalar type. The bridge rejects
+duplicate, mismatched, or incomplete patterns
 before writing the object file. The bridge checks scope, types, mutability,
 and loop placement before lowering these nodes. Collections, structural
 types, generics, and non-scalar pattern matching remain outside this protocol implementation; this is not a

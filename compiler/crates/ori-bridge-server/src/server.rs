@@ -8,7 +8,7 @@ use ori_ast::expr::BinaryOp;
 use ori_codegen::{emit_native_with_options, NativeEmitOptions};
 use ori_diagnostics::Span;
 use ori_hir::hir::{
-    HirArg, HirArm, HirBlock, HirExpr, HirExprKind, HirFunc, HirLValue, HirModule, HirParam,
+    HirArg, HirArm, HirBlock, HirExpr, HirExprArm, HirExprKind, HirFunc, HirLValue, HirModule, HirParam,
     HirPattern, HirStmt,
 };
 use ori_types::{DefId, Ty};
@@ -394,6 +394,46 @@ fn validate_expr(
             }
             Ok(then_ty)
         }
+        SerializedExpr::MatchExpr { scrutinee, arms } => {
+            let scrutinee_ty = validate_expr(scrutinee, locals, callable)?;
+            if !matches!(scrutinee_ty, SerializedTy::Int | SerializedTy::Bool) || arms.is_empty() {
+                return Err("match expression requires a scalar scrutinee and arms".to_string());
+            }
+            let mut ints = HashSet::new();
+            let mut bools = HashSet::new();
+            let mut wildcard = false;
+            let mut result_ty = None;
+            for arm in arms {
+                if wildcard {
+                    return Err("match expression wildcard must be last".to_string());
+                }
+                match &arm.pattern {
+                    SerializedPattern::IntLit(n) if scrutinee_ty == SerializedTy::Int => {
+                        if !ints.insert(*n) {
+                            return Err("duplicate integer match pattern".to_string());
+                        }
+                    }
+                    SerializedPattern::BoolLit(value) if scrutinee_ty == SerializedTy::Bool => {
+                        if !bools.insert(*value) {
+                            return Err("duplicate boolean match pattern".to_string());
+                        }
+                    }
+                    SerializedPattern::Wildcard => wildcard = true,
+                    _ => return Err("match expression pattern has the wrong type".to_string()),
+                }
+                let arm_ty = validate_expr(&arm.body, locals, callable)?;
+                if !matches!(arm_ty, SerializedTy::Int | SerializedTy::Bool | SerializedTy::String)
+                    || result_ty.as_ref().is_some_and(|ty| *ty != arm_ty)
+                {
+                    return Err("match expression arms must have the same supported type".to_string());
+                }
+                result_ty = Some(arm_ty);
+            }
+            if !wildcard && (scrutinee_ty == SerializedTy::Int || bools.len() != 2) {
+                return Err("match expression is not exhaustive".to_string());
+            }
+            result_ty.ok_or_else(|| "match expression has no value".to_string())
+        }
         SerializedExpr::Add(l, r) => validate_int_pair(l, r, locals, callable),
         SerializedExpr::Binary { op, left, right } => {
             if matches!(op, SerializedBinaryOp::And | SerializedBinaryOp::Or) {
@@ -751,6 +791,27 @@ fn lower_expr(
                     cond: Box::new(lower_expr(cond, callable, locals)),
                     then: Box::new(then_lowered),
                     else_: Box::new(lower_expr(else_expr, callable, locals)),
+                },
+                ty,
+                span: Span::DUMMY,
+            }
+        }
+        SerializedExpr::MatchExpr { scrutinee, arms } => {
+            let lowered_arms: Vec<HirExprArm> = arms.iter().map(|arm| HirExprArm {
+                pattern: match &arm.pattern {
+                    SerializedPattern::IntLit(value) => HirPattern::IntLit(*value),
+                    SerializedPattern::BoolLit(value) => HirPattern::BoolLit(*value),
+                    SerializedPattern::Wildcard => HirPattern::Wildcard,
+                },
+                guard: None,
+                body: lower_expr(&arm.body, callable, locals),
+                span: Span::DUMMY,
+            }).collect();
+            let ty = lowered_arms[0].body.ty.clone();
+            HirExpr {
+                kind: HirExprKind::MatchExpr {
+                    scrutinee: Box::new(lower_expr(scrutinee, callable, locals)),
+                    arms: lowered_arms,
                 },
                 ty,
                 span: Span::DUMMY,

@@ -258,7 +258,7 @@ public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
     var expr_idx = 0
     while expr_idx < expr_total
         const tag = lists.get(pool.kind_tags, expr_idx)
-        if tag == 0 or (tag >= 7 and tag != 11)
+        if tag == 0 or (tag >= 7 and tag != 11 and tag != 13)
             codegen_complete = false
         end
         expr_idx = expr_idx + 1

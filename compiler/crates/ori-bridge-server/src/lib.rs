@@ -6,6 +6,7 @@ pub use framing::{read_frame, write_frame, FrameError, MAX_FRAME_SIZE, PROTOCOL_
 pub use protocol::{
     BridgeErrorPayload, CompileModuleRequest, CompileModuleResponse, HandshakeRequest,
     HandshakeResponse, RequestEnvelope, ResponseEnvelope, SerializedBinaryOp, SerializedExpr,
+    SerializedExprArm,
     SerializedFunc, SerializedMatchArm, SerializedModule, SerializedParam, SerializedPattern,
     SerializedStmt, SerializedTy,
     CURRENT_PROTOCOL_VERSION,

@@ -111,6 +111,9 @@ started: 2026-09-07
 > Na mesma linha, a bridge passa a admitir bindings `string`, retorno `string`
 > de chamada tipada e `println` com argumento string calculado; a comparação
 > nativa stage0/stage1 verifica mutação, chamada e `if` inline de string.
+> O parser e a bridge também recebem `match` escalar como expressão, com
+> braços homogêneos e cobertura validada; a comparação de execução nativa
+> com stage0 e a requisição de bridge cobrem retornos de `int` e `string`.
 
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.

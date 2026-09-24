@@ -142,6 +142,57 @@ assert funcs[0]["body_stmts"][3]["Expr"]["Call"]["args"] == [
 assert funcs[1]["return_ty"] == "String", funcs
 PY
 
+cat > "$work/scalar-match-expr.orl" <<'ORI'
+module bootstrap.scalar_match_expr
+import ori.io as io
+main() -> int
+    const choice = 2
+    const label: string = match choice
+        case 1: "one"
+        case else: "two"
+    end
+    io.println(label)
+    const value = match true
+        case true: 42
+        case false: 0
+    end
+    return value - 42
+end
+ORI
+echo 'Stage 0/1: scalar match expressions with string and integer results'
+"$stage0" compile "$work/scalar-match-expr.orl" -o "$work/scalar-match-expr-stage0"
+"$work/ori-stage1" compile "$work/scalar-match-expr.orl" -o "$work/scalar-match-expr-stage1"
+"$work/scalar-match-expr-stage0" > "$work/scalar-match-expr-stage0.stdout"
+"$work/scalar-match-expr-stage1" > "$work/scalar-match-expr-stage1.stdout"
+cmp "$work/scalar-match-expr-stage0.stdout" "$work/scalar-match-expr-stage1.stdout"
+python3 - "$work/scalar-match-expr-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+assert [arm["pattern"] for arm in body[1]["Let"]["value"]["MatchExpr"]["arms"]] == [
+    {"IntLit": 1}, "Wildcard"
+], body
+assert [arm["pattern"] for arm in body[3]["Let"]["value"]["MatchExpr"]["arms"]] == [
+    {"BoolLit": True}, {"BoolLit": False}
+], body
+PY
+
+cat > "$work/nonexhaustive-match-expr.orl" <<'ORI'
+module bootstrap.nonexhaustive_match_expr
+main() -> int
+    return match 1
+        case 1: 42
+    end
+end
+ORI
+if "$work/ori-stage1" check "$work/nonexhaustive-match-expr.orl" > "$work/nonexhaustive-match-expr.log" 2>&1; then
+    echo 'Stage 1 accepted a non-exhaustive match expression' >&2
+    exit 1
+fi
+grep -q 'type.nonexhaustive_match' "$work/nonexhaustive-match-expr.log"
+
 # Preserve the operator and return signature in the bridge request. Previously
 # the lexer discarded `->` and the flat expression pool serialized `*`/`-` as
 # `+`, allowing a different program to pass a simple compile smoke check.

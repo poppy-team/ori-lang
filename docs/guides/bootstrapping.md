@@ -13,7 +13,7 @@ Because Ori is not currently *self-hosted* (the compiler is written in Rust), "b
 An experimental compiler written in Ori lives under `selfhost/compiler/`. Its
 Stage 1 can compile a scalar subset through `ori-bridge-server`, including
 multiple `int` parameters, nested `if`/`else` and `while` blocks, mutable
-assignments, scalar `match` arms, and transitive imports whose definitions fit
+assignments, scalar `match` arms as statements or expressions, and transitive imports whose definitions fit
 the same subset.
 The scalar path also supports grouped and inline `if` expressions with
 integer, Boolean, or string branches, string locals and typed string results.

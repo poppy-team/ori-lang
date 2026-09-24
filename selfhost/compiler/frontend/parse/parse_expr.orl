@@ -211,24 +211,65 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
             return none
         end
     case Match:
-        -- Match as expression: match scrutinee case ... end
-        var m_cur = cursor + 1
-        var depth = 1
-        while m_cur < lists.len(tokens) and depth > 0
-            const mt = lists.get(tokens, m_cur)
-            match mt.kind
-            case End:
-                depth = depth - 1
-                m_cur = m_cur + 1
-            case Match:
-                depth = depth + 1
-                m_cur = m_cur + 1
-            case else:
-                m_cur = m_cur + 1
+        match parse_binary_with_min(tokens, cursor + 1, pool, 0)
+        case none:
+            return none
+        case some(scrutinee):
+            var cur = scrutinee.next_cursor
+            -- Reuse the ordered argument arena as alternating pattern/body
+            -- IDs. -1 represents a wildcard; malformed cases fail closed.
+            const arms: list[int] = []
+            while cur < lists.len(tokens)
+                const boundary = lists.get(tokens, cur)
+                match boundary.kind
+                case End:
+                    if lists.len(arms) == 0
+                        return none
+                    end
+                    const id = alloc_expr_raw(pool, 13, scrutinee.expr_id, -1, "match_expr")
+                    record_call_args(pool, id, arms)
+                    return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
+                case Case:
+                    if cur + 2 >= lists.len(tokens)
+                        return none
+                    end
+                    const pat = lists.get(tokens, cur + 1)
+                    var pat_id = -1
+                    var valid = true
+                    match pat.kind
+                    case IntLit(raw): pat_id = alloc_expr_raw(pool, 1, -1, -1, raw)
+                    case True: pat_id = alloc_expr_raw(pool, 3, -1, -1, "true")
+                    case False: pat_id = alloc_expr_raw(pool, 3, -1, -1, "false")
+                    case Else:
+                    case Ident(name):
+                        if name != "_"
+                            valid = false
+                        end
+                    case else:
+                        valid = false
+                    end
+                    const separator = lists.get(tokens, cur + 2)
+                    match separator.kind
+                    case Colon:
+                    case else: valid = false
+                    end
+                    if not valid
+                        return none
+                    end
+                    match parse_binary_with_min(tokens, cur + 3, pool, 0)
+                    case some(body):
+                        lists.push(arms, pat_id)
+                        lists.push(arms, body.expr_id)
+                        cur = body.next_cursor
+                    case none:
+                        return none
+                    end
+                case else:
+                    return none
+                end
             end
+            return none
         end
-        const id = alloc_expr_raw(pool, 10, -1, -1, "match_expr")
-        return some(ParseExprOut { expr_id: id, next_cursor: m_cur })
     case LBracket:
         -- Typed empty lists are common in compiler code. Preserve a distinct
         -- node; code generation rejects it until collection lowering exists.

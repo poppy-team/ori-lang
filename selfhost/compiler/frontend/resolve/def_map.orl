@@ -201,6 +201,14 @@ check_scoped_expr(
         check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(left_ids, expr_id), visible_locals)
         check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(right_ids, expr_id), visible_locals)
         check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(third_ids, expr_id), visible_locals)
+    elif tag == 13
+        check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(left_ids, expr_id), visible_locals)
+        const first = lists.get(arg_starts, expr_id)
+        var arm = 0
+        while arm + 1 < lists.get(arg_counts, expr_id)
+            check_scoped_expr(dmap, sink, kind_tags, left_ids, right_ids, third_ids, names, arg_starts, arg_counts, arg_ids, lists.get(arg_ids, first + arm + 1), visible_locals)
+            arm = arm + 2
+        end
     end
 end
 

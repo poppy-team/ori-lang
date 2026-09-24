@@ -1,5 +1,5 @@
 use ori_bridge_server::{
-    BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedExpr, SerializedFunc,
+    BridgeServer, CompileModuleRequest, RequestEnvelope, SerializedExpr, SerializedExprArm, SerializedFunc,
     SerializedMatchArm, SerializedModule, SerializedParam, SerializedPattern, SerializedStmt,
     SerializedTy, CURRENT_PROTOCOL_VERSION,
 };
@@ -67,6 +67,20 @@ fn nonexhaustive_and_mistyped_match_arms_are_rejected_before_codegen() {
         assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
         assert!(!dir.path().join("invalid-match.o").exists());
     }
+}
+
+#[test]
+fn nonexhaustive_match_expression_cannot_emit_an_object() {
+    let (res, dir) = compile_with_expr(SerializedExpr::MatchExpr {
+        scrutinee: Box::new(SerializedExpr::IntLit(1)),
+        arms: vec![SerializedExprArm {
+            pattern: SerializedPattern::IntLit(1),
+            body: SerializedExpr::StrLit("one".to_string()),
+        }],
+    });
+    assert_eq!(res.status, "error");
+    assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
+    assert!(!dir.path().join("invalid.o").exists());
 }
 
 #[test]

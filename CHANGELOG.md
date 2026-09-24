@@ -18,6 +18,9 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or mistyped patterns are rejected before native code generation. Bootstrap
   fixtures compare stage0 and stage1 execution and cover a match in a
   transitive imported function. Composite patterns remain unsupported.
+- Scalar `match` expressions preserve integer and Boolean patterns with
+  exhaustive branches, including string results. A native parity fixture
+  compares their execution and checks the bridge payload.
 - String locals and assignments, typed functions returning strings, and
   printing a string variable or result of a typed call now carry their value
   through the bridge. The bootstrap compares the native output with Stage 0.

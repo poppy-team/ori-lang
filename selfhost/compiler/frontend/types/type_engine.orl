@@ -74,6 +74,28 @@ public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_n
         if condition_ty == 3 and then_ty == else_ty
             return then_ty
         end
+    elif tag == 13
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        if count < 2 or count % 2 != 0 or (scrutinee_ty != 1 and scrutinee_ty != 3)
+            return 0
+        end
+        var result_ty = 0
+        var arm = 0
+        while arm < count
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            if pat_id >= 0 and infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys) != scrutinee_ty
+                return 0
+            end
+            const body_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first + arm + 1), func_names, func_ret_tys)
+            if body_ty == 0 or (result_ty != 0 and result_ty != body_ty)
+                return 0
+            end
+            result_ty = body_ty
+            arm = arm + 2
+        end
+        return result_ty
     end
     return 0
 end
@@ -94,6 +116,97 @@ public type_str_to_tag(ty: string) -> int
     return 0
 end
 
+check_match_expr_in_env(env: TypeEnv, sink: ds.DiagnosticSink, pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string])
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 5
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+    elif tag == 6
+        const first = lists.get(pool.call_arg_starts, id)
+        var arg = 0
+        while arg < lists.get(pool.call_arg_counts, id)
+            check_match_expr_in_env(env, sink, pool, lists.get(pool.call_arg_ids, first + arg), func_names, func_ret_tys)
+            arg = arg + 1
+        end
+    elif tag == 11
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.third_ids, id), func_names, func_ret_tys)
+    elif tag == 13
+        const scrutinee_id = lists.get(pool.left_ids, id)
+        check_match_expr_in_env(env, sink, pool, scrutinee_id, func_names, func_ret_tys)
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, scrutinee_id, func_names, func_ret_tys)
+        if scrutinee_ty != 1 and scrutinee_ty != 3
+            ds.emit_error(sink, "type.match_scrutinee", "match expression needs an integer or boolean", "use a supported scalar")
+        end
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        if first < 0 or count < 2 or count % 2 != 0
+            ds.emit_error(sink, "type.invalid_match_arm", "match expression has no complete arms", "add case pattern: value")
+            return
+        end
+        var seen_wildcard = false
+        var seen_true = false
+        var seen_false = false
+        const seen_ints: list[string] = []
+        var result_ty = 0
+        var arm = 0
+        while arm < count
+            if seen_wildcard
+                ds.emit_error(sink, "type.unreachable_match_arm", "case follows a wildcard", "move the wildcard to the last case")
+            end
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            if pat_id == -1
+                seen_wildcard = true
+            elif pat_id >= 0 and pat_id < lists.len(pool.kind_tags)
+                const pat_ty = infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys)
+                if scrutinee_ty != 0 and pat_ty != scrutinee_ty
+                    ds.emit_error(sink, "type.match_pattern_mismatch", "pattern and scrutinee have different types", "use a pattern with the same type")
+                end
+                if lists.get(pool.kind_tags, pat_id) == 1
+                    const raw = lists.get(pool.str_vals, pat_id)
+                    var j = 0
+                    while j < lists.len(seen_ints)
+                        if raw == lists.get(seen_ints, j)
+                            ds.emit_error(sink, "type.duplicate_match_arm", "duplicate integer pattern", "remove the repeated case")
+                        end
+                        j = j + 1
+                    end
+                    lists.push(seen_ints, raw)
+                elif lists.get(pool.str_vals, pat_id) == "true"
+                    if seen_true
+                        ds.emit_error(sink, "type.duplicate_match_arm", "duplicate true pattern", "remove the repeated case")
+                    end
+                    seen_true = true
+                elif lists.get(pool.str_vals, pat_id) == "false"
+                    if seen_false
+                        ds.emit_error(sink, "type.duplicate_match_arm", "duplicate false pattern", "remove the repeated case")
+                    end
+                    seen_false = true
+                end
+            else
+                ds.emit_error(sink, "type.invalid_match_arm", "invalid match pattern", "use a scalar pattern")
+            end
+            const body_id = lists.get(pool.call_arg_ids, first + arm + 1)
+            check_match_expr_in_env(env, sink, pool, body_id, func_names, func_ret_tys)
+            const body_ty = infer_expr_tag_in_env(env, pool, body_id, func_names, func_ret_tys)
+            if body_ty != 0 and result_ty != 0 and body_ty != result_ty
+                ds.emit_error(sink, "type.match_result_mismatch", "match arms have different result types", "return one common type")
+            end
+            if result_ty == 0
+                result_ty = body_ty
+            end
+            arm = arm + 2
+        end
+        if not seen_wildcard and (scrutinee_ty == 1 or (scrutinee_ty == 3 and (not seen_true or not seen_false)))
+            ds.emit_error(sink, "type.nonexhaustive_match", "match expression does not cover every value", "add case else: or both Boolean values")
+        end
+    end
+end
+
 public check_stmt_with_expected(
     env: TypeEnv,
     sink: ds.DiagnosticSink,
@@ -111,6 +224,7 @@ public check_stmt_with_expected(
     const tag = lists.get(sp.kind_tags, stmt_id)
     const expr_id = lists.get(sp.expr_ids, stmt_id)
     const target = lists.get(sp.target_names, stmt_id)
+    check_match_expr_in_env(env, sink, pool, expr_id, func_names, func_ret_tys)
 
     if tag == 1 -- Const / Let
         const inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
