@@ -37,44 +37,20 @@ public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.Exp
                         const after_field = lists.get(tokens, cur + 2)
                         match after_field.kind
                         case LParen:
-                            var first_arg_id = -1
-                            var a_cur = cur + 3
-                            -- Parse first argument if not immediately ')'
-                            if a_cur < lists.len(tokens)
-                                const probe = lists.get(tokens, a_cur)
-                                match probe.kind
-                                case RParen:
-                                    a_cur = a_cur + 1
-                                case else:
-                                    match exprs.parse_primary(tokens, a_cur, pool)
-                                    case some(arg_out):
-                                        first_arg_id = arg_out.expr_id
-                                        a_cur = arg_out.next_cursor
-                                        if a_cur < lists.len(tokens)
-                                            const close_tok = lists.get(tokens, a_cur)
-                                            match close_tok.kind
-                                            case RParen:
-                                                a_cur = a_cur + 1
-                                            case else:
-                                            end
-                                        end
-                                    case none:
-                                        a_cur = a_cur + 1
-                                    end
-                                end
-                            end
-                            -- Preserve the receiver. Serializing every
-                            -- `.println` as the IO builtin would turn calls
-                            -- on unrelated values into output operations.
-                            var next_id = -1
                             if lists.get(pool.kind_tags, current) == 4
                                 const receiver = lists.get(pool.str_vals, current)
-                                next_id = exprs.alloc_expr_raw(pool, 6, first_arg_id, -1, receiver + "." + m_name)
+                                match exprs.parse_call(tokens, cur + 1, pool, receiver + "." + m_name, t.span)
+                                case some(call_out):
+                                    current = call_out.expr_id
+                                    cur = call_out.next_cursor
+                                case none:
+                                    return none
+                                end
                             else
-                                next_id = exprs.alloc_expr_raw(pool, 0, -1, -1, "method_receiver")
+                                const next_id = exprs.alloc_expr_raw(pool, 0, -1, -1, "method_receiver")
+                                current = next_id
+                                cur = cur + 3
                             end
-                            current = next_id
-                            cur = a_cur
                         case else:
                             const next_id = exprs.alloc_expr(pool, node.ExprKind.FieldAccess(
                                 object_id: current,

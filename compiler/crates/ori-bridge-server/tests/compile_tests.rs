@@ -26,6 +26,7 @@ fn test_bridge_real_codegen_round_trip() {
             ],
             return_ty: SerializedTy::Int,
             body_stmts: vec![SerializedStmt::Let {
+                mutable: false,
                 name: "x".to_string(),
                 ty: SerializedTy::Int,
                 value: ori_bridge_server::protocol::SerializedExpr::IntLit(42),

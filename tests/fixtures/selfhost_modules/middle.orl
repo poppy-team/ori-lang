@@ -1,0 +1,5 @@
+module tests.fixtures.selfhost_modules.middle
+import tests.fixtures.selfhost_modules.leaf as leaf
+public compute(a: int, b: int) -> int
+    return leaf.twice(a) + b
+end

@@ -89,14 +89,20 @@ pub enum SerializedStmt {
         name: String,
         ty: SerializedTy,
         value: SerializedExpr,
+        #[serde(default)]
+        mutable: bool,
     },
+    Assign { name: String, value: SerializedExpr },
     Return(Option<SerializedExpr>),
     Expr(SerializedExpr),
+    Break,
+    Continue,
     If {
         cond: SerializedExpr,
         then_stmts: Vec<SerializedStmt>,
         else_stmts: Vec<SerializedStmt>,
     },
+    While { cond: SerializedExpr, body_stmts: Vec<SerializedStmt> },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

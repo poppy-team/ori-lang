@@ -79,6 +79,16 @@ started: 2026-09-07
 > também bindings locais `bool` e suas anotações até a bridge, com paridade
 > nativa e rejeição de anotações incompatíveis.
 
+> Execução 204: todos os jobs nativos e de empacotamento passaram; o bootstrap
+> parou em `bridge.unsupported_ir` ao compilar `selfhost/compiler/main.orl`.
+> A revisão atual representa `if`/`else` e `while` aninhados, atribuições
+> mutáveis e `break`/`continue`, amplia chamadas para oito argumentos inteiros
+> e descobre imports transitivos com detecção de ciclos e visibilidade de
+> funções. A requisição local contém as definições de dois módulos importados
+> e preserva o corpo de um laço aninhado. A execução nativa desses novos casos
+> ainda depende da próxima run de CI. O frontend ainda não representa toda a
+> linguagem usada pelo próprio compilador; stage2 e stage3 não foram gerados.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

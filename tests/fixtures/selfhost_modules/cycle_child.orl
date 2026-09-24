@@ -1,0 +1,2 @@
+module tests.fixtures.selfhost_modules.cycle_child
+import tests.fixtures.selfhost_modules.cycle_root as root

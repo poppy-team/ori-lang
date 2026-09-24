@@ -10,10 +10,13 @@ import selfhost.compiler.frontend.parse.postfix as pf
 import selfhost.compiler.frontend.parse.pratt as pr
 
 public struct StmtPool
-    kind_tags: list[int] -- 1=Const, 2=Return, 3=Expr, 4=If
+    kind_tags: list[int] -- 1=Let, 2=Return, 3=Expr, 4=If, 5=While, 6=Assign, 7=Break, 8=Continue
     expr_ids: list[int]
     target_names: list[string]
     type_annotations: list[string]
+    mutable_flags: list[int]
+    branch_starts: list[int] -- first statement of an else branch, or subtree end
+    subtree_ends: list[int] -- exclusive end of this statement's descendants
 end
 
 public new_stmt_pool() -> StmtPool
@@ -21,11 +24,17 @@ public new_stmt_pool() -> StmtPool
     const empty_e: list[int] = []
     const empty_t: list[string] = []
     const empty_a: list[string] = []
+    const empty_m: list[int] = []
+    const empty_b: list[int] = []
+    const empty_end: list[int] = []
     return StmtPool {
         kind_tags: empty_k,
         expr_ids: empty_e,
         target_names: empty_t,
-        type_annotations: empty_a
+        type_annotations: empty_a,
+        mutable_flags: empty_m,
+        branch_starts: empty_b,
+        subtree_ends: empty_end
     }
 end
 
@@ -35,6 +44,9 @@ public alloc_stmt_raw(pool: StmtPool, kind: int, expr_id: int, target: string) -
     lists.push(pool.expr_ids, expr_id)
     lists.push(pool.target_names, target)
     lists.push(pool.type_annotations, "")
+    lists.push(pool.mutable_flags, 0)
+    lists.push(pool.branch_starts, id + 1)
+    lists.push(pool.subtree_ends, id + 1)
     return id
 end
 
@@ -57,7 +69,7 @@ public struct ParseStmtOut
     next_cursor: int
 end
 
-public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
+public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool, mutable: bool) -> optional[ParseStmtOut]
     if cursor + 3 >= lists.len(tokens)
         return none
     end
@@ -90,6 +102,9 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
             match pr.parse_with_precedence(tokens, cursor + 3, pool, 0)
             case some(val_out):
                 const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, name)
+                if mutable
+                    lists.set(sp.mutable_flags, stmt_id, 1)
+                end
                 return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
             case none:
                 return none
@@ -161,6 +176,9 @@ public parse_let(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp:
                 case some(val_out):
                     const stmt_id = alloc_stmt_raw(sp, 1, val_out.expr_id, val_name)
                     lists.set(sp.type_annotations, stmt_id, declared_ty)
+                    if mutable
+                        lists.set(sp.mutable_flags, stmt_id, 1)
+                    end
                     return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: val_out.next_cursor })
                 case none:
                     return none
@@ -182,25 +200,88 @@ public parse_return(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, 
         const stmt_id = alloc_stmt_raw(sp, 2, out.expr_id, "")
         return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: out.next_cursor })
     case none:
-        return none
+        const stmt_id = alloc_stmt_raw(sp, 2, -1, "")
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cursor + 1 })
     end
+end
+
+-- All statements are stored in preorder. Each block parent records where its
+-- branches start and its exclusive end, so no nested body can be dropped.
+parse_block(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool, allow_else: bool) -> int
+    var cur = cursor
+    while cur < lists.len(tokens)
+        const token = lists.get(tokens, cur)
+        match token.kind
+        case End:
+            return cur
+        case Else:
+            if allow_else
+                return cur
+            end
+            alloc_stmt_raw(sp, 0, -1, "unexpected_else")
+            cur = cur + 1
+        case else:
+            match parse_statement(tokens, cur, pool, sp)
+            case some(out):
+                if out.next_cursor > cur
+                    cur = out.next_cursor
+                else
+                    alloc_stmt_raw(sp, 0, -1, "invalid_statement_cursor")
+                    cur = cur + 1
+                end
+            case none:
+                alloc_stmt_raw(sp, 0, -1, "unsupported_statement")
+                cur = cur + 1
+            end
+        end
+    end
+    return cur
 end
 
 public parse_if(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
     match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
     case some(cond_out):
-        var cur = cond_out.next_cursor
-        while cur < lists.len(tokens)
-            const t = lists.get(tokens, cur)
-            match t.kind
-            case End:
-                const stmt_id = alloc_stmt_raw(sp, 4, cond_out.expr_id, "")
-                return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur + 1 })
+        const stmt_id = alloc_stmt_raw(sp, 4, cond_out.expr_id, "")
+        var cur = parse_block(tokens, cond_out.next_cursor, pool, sp, true)
+        if cur < lists.len(tokens)
+            const boundary = lists.get(tokens, cur)
+            match boundary.kind
+            case Else:
+                lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
+                cur = parse_block(tokens, cur + 1, pool, sp, false)
             case else:
-                cur = cur + 1
+                lists.set(sp.branch_starts, stmt_id, lists.len(sp.kind_tags))
             end
         end
+        lists.set(sp.subtree_ends, stmt_id, lists.len(sp.kind_tags))
+        if cur < lists.len(tokens)
+            const closing = lists.get(tokens, cur)
+            match closing.kind
+            case End:
+                return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur + 1 })
+            case else:
+            end
+        end
+        alloc_stmt_raw(sp, 0, -1, "unterminated_if")
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur })
+    case none:
         return none
+    end
+end
+
+public parse_while(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, sp: StmtPool) -> optional[ParseStmtOut]
+    match pr.parse_with_precedence(tokens, cursor + 1, pool, 0)
+    case some(cond_out):
+        const stmt_id = alloc_stmt_raw(sp, 5, cond_out.expr_id, "")
+        const cur = parse_block(tokens, cond_out.next_cursor, pool, sp, false)
+        const end_idx = lists.len(sp.kind_tags)
+        lists.set(sp.branch_starts, stmt_id, end_idx)
+        lists.set(sp.subtree_ends, stmt_id, end_idx)
+        if cur < lists.len(tokens)
+            return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur + 1 })
+        end
+        alloc_stmt_raw(sp, 0, -1, "unterminated_while")
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cur })
     case none:
         return none
     end
@@ -214,13 +295,43 @@ public parse_statement(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPoo
     const t = lists.get(tokens, cursor)
     match t.kind
     case Const:
-        return parse_let(tokens, cursor, pool, sp)
+        return parse_let(tokens, cursor, pool, sp, false)
     case Var:
-        return parse_let(tokens, cursor, pool, sp)
+        return parse_let(tokens, cursor, pool, sp, true)
     case Return:
         return parse_return(tokens, cursor, pool, sp)
     case If:
         return parse_if(tokens, cursor, pool, sp)
+    case While:
+        return parse_while(tokens, cursor, pool, sp)
+    case Break:
+        const stmt_id = alloc_stmt_raw(sp, 7, -1, "")
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cursor + 1 })
+    case Continue:
+        const stmt_id = alloc_stmt_raw(sp, 8, -1, "")
+        return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: cursor + 1 })
+    case Ident(name):
+        if cursor + 1 < lists.len(tokens)
+            const next_tok = lists.get(tokens, cursor + 1)
+            match next_tok.kind
+            case Eq:
+                match pr.parse_with_precedence(tokens, cursor + 2, pool, 0)
+                case some(out):
+                    const stmt_id = alloc_stmt_raw(sp, 6, out.expr_id, name)
+                    return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: out.next_cursor })
+                case none:
+                    return none
+                end
+            case else:
+            end
+        end
+        match pf.parse_postfix_chain(tokens, cursor, pool)
+        case some(out):
+            const stmt_id = alloc_stmt_raw(sp, 3, out.expr_id, "")
+            return some(ParseStmtOut { stmt_id: stmt_id, next_cursor: out.next_cursor })
+        case none:
+            return none
+        end
     case else:
         match pf.parse_postfix_chain(tokens, cursor, pool)
         case some(out):

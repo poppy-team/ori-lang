@@ -22,6 +22,7 @@ fn test_bridge_real_codegen_and_run_end_to_end() {
             return_ty: ori_bridge_server::SerializedTy::Int,
             body_stmts: vec![
                 ori_bridge_server::SerializedStmt::Let {
+                    mutable: false,
                     name: "x".to_string(),
                     ty: ori_bridge_server::SerializedTy::Int,
                     value: ori_bridge_server::SerializedExpr::Add(

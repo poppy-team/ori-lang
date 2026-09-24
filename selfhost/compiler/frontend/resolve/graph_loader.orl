@@ -1,0 +1,142 @@
+module selfhost.compiler.frontend.resolve.graph_loader
+
+import ori.list as lists
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_import as pi
+import selfhost.compiler.frontend.resolve.graph as graph
+import selfhost.compiler.frontend.resolve.loader as loader
+
+public struct LoadedGraph
+    names: list[string]
+    contents: list[string]
+    valid: list[int]
+end
+
+public find_module(loaded: LoadedGraph, path: string) -> int
+    var i = 0
+    while i < lists.len(loaded.names)
+        if lists.get(loaded.names, i) == path
+            return i
+        end
+        i = i + 1
+    end
+    return -1
+end
+
+public module_loaded(loaded: LoadedGraph, path: string) -> bool
+    const index = find_module(loaded, path)
+    return index >= 0 and index < lists.len(loaded.valid) and lists.get(loaded.valid, index) == 1
+end
+
+-- Breadth-first discovery gives every module one file and one validated
+-- header. Dependencies are added once, even when several parents import them.
+public load_graph(root_name: string, root_content: string, sink: ds.DiagnosticSink) -> LoadedGraph
+    const dependencies = graph.new_graph()
+    graph.register_module(dependencies, root_name)
+    const contents: list[string] = []
+    const valid: list[int] = []
+    var index = 0
+    while index < graph.module_count(dependencies)
+        if index >= 512
+            ds.emit_error(sink, "bind.import_graph_limit", "import graph exceeds 512 modules", "remove cyclic or excessive imports")
+            break
+        end
+        const module_path = lists.get(dependencies.names, index)
+        var source = root_content
+        var loaded_ok = true
+        if index > 0
+            match loader.load_module_text(module_path, ".")
+            case ok(data):
+                source = data
+            case err(message):
+                ds.emit_error(sink, "bind.import_not_found", message, "check the imported module path")
+                source = ""
+                loaded_ok = false
+            end
+        end
+        lists.push(contents, source)
+        if loaded_ok
+            const tokens = lex.tokenize_all(source)
+            match pi.parse_module_header(tokens, 0)
+            case some(header):
+                if header.name != module_path
+                    ds.emit_error(sink, "project.namespace_file_mismatch", "import " + module_path + " declares " + header.name, "use the module path declared by the imported file")
+                    loaded_ok = false
+                end
+            case none:
+                if index > 0
+                    ds.emit_error(sink, "parse.module_missing", "import " + module_path + " has no module declaration", "add a matching module declaration")
+                    loaded_ok = false
+                end
+            end
+            if loaded_ok
+                var cursor = 0
+                while cursor < lists.len(tokens)
+                    const token = lists.get(tokens, cursor)
+                    match token.kind
+                    case Import:
+                        match pi.parse_import_decl(tokens, cursor)
+                        case some(found):
+                            graph.register_edge(dependencies, module_path, found.import_node.module_path)
+                            cursor = found.next_cursor
+                        case none:
+                            ds.emit_error(sink, "parse.import_invalid", "invalid import in " + module_path, "use import module.path as alias")
+                            cursor = cursor + 1
+                        end
+                    case else:
+                        cursor = cursor + 1
+                    end
+                end
+            end
+        end
+        lists.push(valid, if loaded_ok then 1 else 0)
+        index = index + 1
+    end
+    if graph_contains_cycle(dependencies)
+        ds.emit_error(sink, "bind.import_cycle", "module import graph contains a cycle", "remove the cyclic import")
+    end
+    return LoadedGraph { names: dependencies.names, contents: contents, valid: valid }
+end
+
+graph_contains_cycle(dependencies: graph.ModuleGraph) -> bool
+    const incoming: list[int] = []
+    const ready: list[int] = []
+    const count = graph.module_count(dependencies)
+    var node = 0
+    while node < count
+        lists.push(incoming, 0)
+        node = node + 1
+    end
+    var edge = 0
+    while edge < lists.len(dependencies.edge_to)
+        const target = lists.get(dependencies.edge_to, edge)
+        lists.set(incoming, target, lists.get(incoming, target) + 1)
+        edge = edge + 1
+    end
+    node = 0
+    while node < count
+        if lists.get(incoming, node) == 0
+            lists.push(ready, node)
+        end
+        node = node + 1
+    end
+    var visited = 0
+    while visited < lists.len(ready)
+        const current = lists.get(ready, visited)
+        edge = 0
+        while edge < lists.len(dependencies.edge_from)
+            if lists.get(dependencies.edge_from, edge) == current
+                const target = lists.get(dependencies.edge_to, edge)
+                const remaining = lists.get(incoming, target) - 1
+                lists.set(incoming, target, remaining)
+                if remaining == 0
+                    lists.push(ready, target)
+                end
+            end
+            edge = edge + 1
+        end
+        visited = visited + 1
+    end
+    return visited != count
+end

@@ -1,0 +1,5 @@
+module tests.fixtures.selfhost_modules.private_member
+import tests.fixtures.selfhost_modules.leaf as leaf
+main() -> int
+    return leaf.hidden() - 42
+end

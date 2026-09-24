@@ -105,39 +105,11 @@ public struct PrattOut
 end
 
 public parse_with_precedence(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, min_power: int) -> optional[PrattOut]
-    match exprs.parse_primary(tokens, cursor, pool)
+    match exprs.parse_binary_with_min(tokens, cursor, pool, min_power)
     case none:
         return none
-    case some(left):
-        var cur = left.next_cursor
-        var current_id = left.expr_id
-
-        while cur < lists.len(tokens)
-            const op_tok = lists.get(tokens, cur)
-            const power = binding_power(op_tok.kind)
-            if power < min_power
-                return some(PrattOut { expr_id: current_id, next_cursor: cur })
-            end
-
-            match binary_op_kind(op_tok.kind)
-            case none:
-                return some(PrattOut { expr_id: current_id, next_cursor: cur })
-            case some(op_kind):
-                -- Recursion with power + 1 preserves left-associativity
-                match parse_with_precedence(tokens, cur + 1, pool, power + 1)
-                case none:
-                    return some(PrattOut { expr_id: current_id, next_cursor: cur })
-                case some(right):
-                    current_id = exprs.alloc_expr(pool, node.ExprKind.Binary(
-                        op: op_kind,
-                        left_id: current_id,
-                        right_id: right.expr_id
-                    ), op_tok.span)
-                    cur = right.next_cursor
-                end
-            end
-        end
-        return some(PrattOut { expr_id: current_id, next_cursor: cur })
+    case some(parsed):
+        return some(PrattOut { expr_id: parsed.expr_id, next_cursor: parsed.next_cursor })
     end
 end
 

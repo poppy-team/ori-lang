@@ -12,6 +12,14 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 now preserves nested `if`/`else` and `while` bodies, mutable local
+  assignments, and `break`/`continue` through the bridge. Calls can carry up
+  to eight integer arguments and grouped arithmetic expressions. Transitive
+  module discovery checks missing files, namespace mismatches, cycles, and
+  visibility; compatible imported scalar functions are linked into the same
+  native module. The bootstrap gate compares these cases with Stage 0. Full
+  self-compilation still needs collections, generics, enum patterns, string
+  interpolation, and their standard library/runtime operations.
 - Stage 1 and the bridge now preserve `bool` local bindings and Boolean
   variable reads, including an explicitly annotated binding. A new bootstrap
   fixture compares native execution with Stage 0 and checks the `Bool` HIR

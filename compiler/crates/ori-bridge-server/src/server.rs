@@ -7,11 +7,11 @@ use ori_ast::expr::BinaryOp;
 use ori_codegen::{emit_native_with_options, NativeEmitOptions};
 use ori_diagnostics::Span;
 use ori_hir::hir::{
-    HirArg, HirBlock, HirExpr, HirExprKind, HirFunc, HirModule, HirParam, HirStmt,
+    HirArg, HirBlock, HirExpr, HirExprKind, HirFunc, HirLValue, HirModule, HirParam, HirStmt,
 };
 use ori_types::{DefId, Ty};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub struct BridgeServer;
@@ -183,7 +183,7 @@ fn lower_serialized_module(sm: &SerializedModule) -> HirModule {
     }
 }
 
-// Protocol v1 can lower calls with zero or one Int argument and a scalar result.
+// The scalar subset supports a fixed, explicitly checked number of Int arguments.
 // Build the signature table before visiting bodies so forward calls work.
 type CallableSignatures = HashMap<String, (Vec<SerializedTy>, SerializedTy)>;
 
@@ -194,7 +194,7 @@ fn callable_functions(module: &SerializedModule) -> CallableSignatures {
         .filter(|f| {
             f.name != "main"
                 && f.name != "println"
-                && f.params.len() <= 1
+                && f.params.len() <= 8
                 && f.params.iter().all(|p| p.ty == SerializedTy::Int)
                 && matches!(&f.return_ty, SerializedTy::Int | SerializedTy::Bool)
         })
@@ -217,13 +217,14 @@ fn validate_module(module: &SerializedModule) -> Result<(), String> {
             return Err(format!("duplicate function: {}", func.name));
         }
         let mut locals = HashMap::new();
+        let mut mutable_names = HashSet::new();
         for param in &func.params {
             if locals.insert(param.name.clone(), param.ty.clone()).is_some() {
                 return Err(format!("duplicate parameter: {}", param.name));
             }
         }
         for stmt in &func.body_stmts {
-            validate_stmt(stmt, &mut locals, &func.return_ty, &callable)?;
+            validate_stmt(stmt, &mut locals, &mut mutable_names, &func.return_ty, &callable, false)?;
         }
     }
     Ok(())
@@ -232,16 +233,29 @@ fn validate_module(module: &SerializedModule) -> Result<(), String> {
 fn validate_stmt(
     s: &SerializedStmt,
     locals: &mut HashMap<String, SerializedTy>,
+    mutable_names: &mut HashSet<String>,
     return_ty: &SerializedTy,
     callable: &CallableSignatures,
+    in_loop: bool,
 ) -> Result<(), String> {
     match s {
-        SerializedStmt::Let { name, ty, value } => {
+        SerializedStmt::Let { name, ty, value, mutable } => {
             let actual = validate_expr(value, locals, callable)?;
             if actual != *ty || locals.contains_key(name) {
                 return Err(format!("invalid or duplicate binding: {name}"));
             }
             locals.insert(name.clone(), ty.clone());
+            if *mutable {
+                mutable_names.insert(name.clone());
+            }
+        }
+        SerializedStmt::Assign { name, value } => {
+            if !mutable_names.contains(name) {
+                return Err(format!("assignment requires a mutable local: {name}"));
+            }
+            if Some(&validate_expr(value, locals, callable)?) != locals.get(name) {
+                return Err(format!("assignment type does not match local: {name}"));
+            }
         }
         SerializedStmt::Return(Some(e)) => {
             if validate_expr(e, locals, callable)? != *return_ty {
@@ -256,6 +270,11 @@ fn validate_stmt(
         SerializedStmt::Expr(e) => {
             validate_expr(e, locals, callable)?;
         }
+        SerializedStmt::Break | SerializedStmt::Continue => {
+            if !in_loop {
+                return Err("break and continue require a loop".to_string());
+            }
+        }
         SerializedStmt::If {
             cond,
             then_stmts,
@@ -266,11 +285,23 @@ fn validate_stmt(
             }
             let mut then_locals = locals.clone();
             let mut else_locals = locals.clone();
+            let mut then_mutable = mutable_names.clone();
+            let mut else_mutable = mutable_names.clone();
             for ts in then_stmts {
-                validate_stmt(ts, &mut then_locals, return_ty, callable)?;
+                validate_stmt(ts, &mut then_locals, &mut then_mutable, return_ty, callable, in_loop)?;
             }
             for es in else_stmts {
-                validate_stmt(es, &mut else_locals, return_ty, callable)?;
+                validate_stmt(es, &mut else_locals, &mut else_mutable, return_ty, callable, in_loop)?;
+            }
+        }
+        SerializedStmt::While { cond, body_stmts } => {
+            if validate_expr(cond, locals, callable)? != SerializedTy::Bool {
+                return Err("while condition must be bool".to_string());
+            }
+            let mut body_locals = locals.clone();
+            let mut body_mutable = mutable_names.clone();
+            for bs in body_stmts {
+                validate_stmt(bs, &mut body_locals, &mut body_mutable, return_ty, callable, true)?;
             }
         }
     }
@@ -421,21 +452,28 @@ fn lower_stmt(
     locals: &mut HashMap<String, SerializedTy>,
 ) -> HirStmt {
     match ss {
-        SerializedStmt::Let { name, ty, value } => {
+        SerializedStmt::Let { name, ty, value, mutable } => {
             let lowered_value = lower_expr(value, callable, locals);
             locals.insert(name.clone(), ty.clone());
             HirStmt::Let {
                 name: SmolStr::new(name),
                 ty: lower_ty(ty),
-                mutable: false,
+                mutable: *mutable,
                 value: lowered_value,
                 span: Span::DUMMY,
             }
         }
+        SerializedStmt::Assign { name, value } => HirStmt::Assign {
+            lvalue: HirLValue::Var(SmolStr::new(name)),
+            value: lower_expr(value, callable, locals),
+            span: Span::DUMMY,
+        },
         SerializedStmt::Return(maybe_expr) => {
             HirStmt::Return(maybe_expr.as_ref().map(|e| lower_expr(e, callable, locals)), Span::DUMMY)
         }
         SerializedStmt::Expr(expr) => HirStmt::Expr(lower_expr(expr, callable, locals)),
+        SerializedStmt::Break => HirStmt::Break(Span::DUMMY),
+        SerializedStmt::Continue => HirStmt::Continue(Span::DUMMY),
         SerializedStmt::If {
             cond,
             then_stmts,
@@ -464,6 +502,21 @@ fn lower_stmt(
                             .collect(),
                         span: Span::DUMMY,
                     })
+                },
+                span: Span::DUMMY,
+            }
+        }
+        SerializedStmt::While { cond, body_stmts } => {
+            let lowered_cond = lower_expr(cond, callable, locals);
+            let mut body_locals = locals.clone();
+            HirStmt::While {
+                cond: lowered_cond,
+                body: HirBlock {
+                    stmts: body_stmts
+                        .iter()
+                        .map(|s| lower_stmt(s, callable, &mut body_locals))
+                        .collect(),
+                    span: Span::DUMMY,
                 },
                 span: Span::DUMMY,
             }

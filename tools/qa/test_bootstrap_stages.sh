@@ -300,7 +300,7 @@ with open(sys.argv[1], encoding="utf-8") as request_file:
     funcs = json.load(request_file)["module"]["funcs"]
 assert funcs[0]["body_stmts"][0]["Let"]["ty"] == "Bool", funcs
 assert funcs[0]["body_stmts"][1]["Let"] == {
-    "name": "another", "ty": "Bool", "value": {"Var": "outcome"}
+    "name": "another", "ty": "Bool", "value": {"Var": "outcome"}, "mutable": False
 }, funcs
 assert funcs[1]["body_stmts"][0]["Let"]["ty"] == "Bool", funcs
 assert funcs[1]["body_stmts"][1]["Return"] == {"Var": "good"}, funcs
@@ -321,6 +321,96 @@ ORI
 "$work/shadowed-io-stage0" > "$work/shadowed-io-stage0.stdout"
 "$work/shadowed-io-stage1" > "$work/shadowed-io-stage1.stdout"
 cmp "$work/shadowed-io-stage0.stdout" "$work/shadowed-io-stage1.stdout"
+
+# Nested statements must survive parsing and be executed by the native
+# backend. The intermediate request also proves that both branches remain.
+cat > "$work/control-flow.orl" <<'ORI'
+module bootstrap.control_flow
+main() -> int
+    var value = 0
+    while value < 4
+        if value == 2
+            value = value + 2
+        else
+            value = value + 1
+        end
+    end
+    return value - 4
+end
+ORI
+echo 'Stage 0/1: nested if/else, while, mutable assignment'
+"$stage0" compile "$work/control-flow.orl" -o "$work/control-flow-stage0"
+"$work/ori-stage1" compile "$work/control-flow.orl" -o "$work/control-flow-stage1"
+"$work/control-flow-stage0"
+"$work/control-flow-stage1"
+python3 - "$work/control-flow-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+assert body[0]["Let"]["mutable"] is True, body
+loop = body[1]["While"]
+assert loop["cond"]["Binary"]["op"] == "Lt", loop
+conditional = loop["body_stmts"][0]["If"]
+assert conditional["then_stmts"][0]["Assign"]["name"] == "value", conditional
+assert conditional["else_stmts"][0]["Assign"]["name"] == "value", conditional
+PY
+
+cat > "$work/multi-arg-expr.orl" <<'ORI'
+module bootstrap.multi_arg_expr
+add(a: int, b: int) -> int
+    return a + b
+end
+main() -> int
+    return add(6 * 7, (1 + 1)) - 44
+end
+ORI
+echo 'Stage 0/1: multiple arguments and grouped expressions'
+"$stage0" compile "$work/multi-arg-expr.orl" -o "$work/multi-arg-expr-stage0"
+"$work/ori-stage1" compile "$work/multi-arg-expr.orl" -o "$work/multi-arg-expr-stage1"
+"$work/multi-arg-expr-stage0"
+"$work/multi-arg-expr-stage1"
+python3 - "$work/multi-arg-expr-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+args = funcs[1]["body_stmts"][0]["Return"]["Binary"]["left"]["Call"]["args"]
+assert len(args) == 2 and args[0]["Binary"]["op"] == "Mul", funcs
+assert args[1]["Add"] == [{"IntLit": 1}, {"IntLit": 1}], funcs
+PY
+
+echo 'Stage 0/1: transitive imported definitions and public visibility'
+"$stage0" compile "$repo/tests/fixtures/selfhost_modules/root.orl" -o "$work/import-root-stage0"
+"$work/ori-stage1" compile "$repo/tests/fixtures/selfhost_modules/root.orl" -o "$work/import-root-stage1"
+"$work/import-root-stage0"
+"$work/import-root-stage1"
+python3 - "$work/import-root-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    funcs = json.load(request_file)["module"]["funcs"]
+assert [f["name"] for f in funcs] == [
+    "main",
+    "tests.fixtures.selfhost_modules.middle.compute",
+    "tests.fixtures.selfhost_modules.leaf.twice",
+    "tests.fixtures.selfhost_modules.leaf.hidden",
+], funcs
+assert funcs[1]["body_stmts"][0]["Return"]["Add"][0]["Call"]["callee"] == funcs[2]["name"], funcs
+PY
+
+for case in cycle_root missing_leaf private_member; do
+    if "$work/ori-stage1" check "$repo/tests/fixtures/selfhost_modules/$case.orl" > "$work/$case.log" 2>&1; then
+        echo "Stage 1 accepted invalid import graph: $case" >&2
+        exit 1
+    fi
+done
+grep -q 'bind.import_cycle' "$work/cycle_root.log"
+grep -q 'bind.import_not_found' "$work/missing_leaf.log"
+grep -q 'bind.private_import' "$work/private_member.log"
 
 # Every source construct that the flat IR cannot express must fail before
 # invoking the bridge; otherwise a successful binary could change semantics.

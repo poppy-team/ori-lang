@@ -158,3 +158,77 @@ fn mixed_type_arithmetic_is_rejected_before_codegen() {
     assert!(res.error.unwrap().message.contains("arithmetic operands"));
     assert!(!dir.path().join("invalid.o").exists());
 }
+
+#[test]
+fn assignment_to_const_is_rejected_before_codegen() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("const-assign.o");
+    let req = RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION,
+        request_id: 20,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module: SerializedModule {
+                namespace: "test.const_assign".to_string(),
+                funcs: vec![SerializedFunc {
+                    name: "main".to_string(),
+                    params: vec![],
+                    return_ty: SerializedTy::Void,
+                    body_stmts: vec![
+                        SerializedStmt::Let {
+                            name: "n".to_string(),
+                            ty: SerializedTy::Int,
+                            value: SerializedExpr::IntLit(0),
+                            mutable: false,
+                        },
+                        SerializedStmt::While {
+                            cond: SerializedExpr::BoolLit(true),
+                            body_stmts: vec![SerializedStmt::Assign {
+                                name: "n".to_string(),
+                                value: SerializedExpr::IntLit(1),
+                            }],
+                        },
+                    ],
+                    is_public: true,
+                }],
+            },
+            output_path: output.to_string_lossy().into_owned(),
+            lib_mode: false,
+        })
+        .unwrap(),
+    };
+    let res = BridgeServer::new().handle_request(req);
+    assert_eq!(res.status, "error");
+    assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
+    assert!(!output.exists());
+}
+
+#[test]
+fn break_outside_loop_is_rejected_before_codegen() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("break-outside.o");
+    let req = RequestEnvelope {
+        protocol_version: CURRENT_PROTOCOL_VERSION,
+        request_id: 21,
+        command: "compile_module".to_string(),
+        payload: serde_json::to_value(CompileModuleRequest {
+            module: SerializedModule {
+                namespace: "test.break_outside".to_string(),
+                funcs: vec![SerializedFunc {
+                    name: "main".to_string(),
+                    params: vec![],
+                    return_ty: SerializedTy::Void,
+                    body_stmts: vec![SerializedStmt::Break],
+                    is_public: true,
+                }],
+            },
+            output_path: output.to_string_lossy().into_owned(),
+            lib_mode: false,
+        })
+        .unwrap(),
+    };
+    let res = BridgeServer::new().handle_request(req);
+    assert_eq!(res.status, "error");
+    assert_eq!(res.error.unwrap().code, "bridge.unsupported_ir");
+    assert!(!output.exists());
+}

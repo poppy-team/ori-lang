@@ -16,7 +16,11 @@ This chapter specifies the versioned framing protocol and data schema exchanged 
 accepts `--request-file <path>` containing an unframed JSON
 `CompileModuleRequest` and constructs the envelope itself. The framing helpers
 exist as library functions, but the self-host client does not use framed IPC.
-Only a subset of expressions and statements is serialized; this is not a
+The current scalar subset includes nested `If`/`While`, `Let` mutability,
+`Assign`, `Break`/`Continue`, and typed local calls with up to eight integer
+parameters. The bridge checks scope, types, mutability, and loop placement
+before lowering these nodes. Collections, structural types, generics, and
+pattern matching remain outside this protocol implementation; this is not a
 complete HIR, nor a production bootstrap contract. The proposed ADR-0006
 describes the intended architecture. The schemas and timeouts below describe
 the target protocol, not features already implemented by the CLI.
@@ -178,35 +182,40 @@ The implemented process path reads a JSON object with `module`, `output_path`
 and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
 `name`, `params`, `return_ty`, `body_stmts`, and `is_public`. Types are tagged
 `Int`, `Float`, `Bool`, `String`, or `Void`. The supported statement shapes are
-`Let`, `Return`, `Expr`, and `If`; expressions are `IntLit`, `StrLit`,
-`BoolLit`, `Var`, `Add`, `Binary`, and `Call`. A built-in print call accepts
-zero or one string literal. Local calls with no arguments, or one `Int`
-argument and an `Int` or `Bool` return, use the declared module signature,
+`Let` (with mutability), `Assign`, `Return`, `Expr`, `If`, `While`, `Break`,
+and `Continue`; expressions are `IntLit`, `StrLit`, `BoolLit`, `Var`, `Add`,
+`Binary`, and `Call`. A built-in print call accepts zero or one string literal.
+Local calls with up to eight `Int` arguments and an `Int` or `Bool` return use the declared module signature,
 including forward calls. The bridge checks argument count and type before
 emitting an object. Calls requiring an unknown function signature are rejected
 with `bridge.unsupported_ir`; no external signature is inferred.
 The bridge additionally validates local integer and Boolean bindings, return types,
 integer arithmetic, comparisons between integers (producing `Bool`),
-and Boolean `if` conditions. Undefined variables and variable types other than
+Boolean `if`/`while` conditions, mutable assignments, branch-local scope,
+and loop control placement. Undefined variables and variable types other than
 `Int` and `Bool` are rejected until their typed lowering exists. The Ori client
 preserves explicit primitive local annotations and rejects an annotation that
 disagrees with its value. It can emit zero-argument
-functions and functions with one `int` parameter; it preserves the parameter
-name, resolves it within its function, and accepts integer arguments for local
-calls. Parameters on `main`, other parameter types, more than one parameter,
+functions with up to eight `int` parameters; it preserves parameter
+names, resolves them within each function, and accepts integer arguments for local
+calls. Parameters on `main`, other parameter types, more than eight parameters,
 unsupported return types, and statements absent from its emitter prevent
 object emission.
 The client preserves the operator in integer `+`, `-`, `*`, and `/` expressions
 and recognizes `-> int` return signatures. The limited type check evaluates
 return expressions against each function's own signature. It must refuse code generation for
-source it cannot represent: interpolated strings, floats, multiple call
-arguments, non-IO method calls, unknown body tokens, user-defined type declarations, top-level
+source it cannot represent: interpolated strings, floats, unsupported argument
+types, non-IO method calls, unknown body tokens, user-defined type declarations, top-level
 constants, and incomplete function bodies. A `check` result does not imply
 that this restricted code generation path supports the checked program.
 The current print path accepts `io.println` only when `io` is an import alias
 for `ori.io`. The imported namespace takes precedence over a same-named local
 binding; arbitrary receiver names and renamed aliases remain
-outside the implemented bridge subset.
+outside the implemented bridge subset. For user modules with compatible
+scalar functions, the client discovers the transitive graph, checks module
+headers, detects cycles, validates public visibility, and includes their
+definitions in the same bridge request. Generic and structural module
+definitions still block native emission.
 
 The existing `--request-file` path does not enforce the proposed 30-second
 read timeout, 120-second compile timeout, 64 MiB frame limit, deterministic

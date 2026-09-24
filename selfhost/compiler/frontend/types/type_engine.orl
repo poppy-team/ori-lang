@@ -8,14 +8,17 @@ import selfhost.compiler.frontend.parse.parse_stmt as stmts
 public struct TypeEnv
     binding_names: list[string]
     binding_ty_tags: list[int]
+    binding_mutable: list[int]
 end
 
 public new_env() -> TypeEnv
     const empty_n: list[string] = []
     const empty_t: list[int] = []
+    const empty_m: list[int] = []
     return TypeEnv {
         binding_names: empty_n,
-        binding_ty_tags: empty_t
+        binding_ty_tags: empty_t,
+        binding_mutable: empty_m
     }
 end
 
@@ -111,6 +114,7 @@ public check_stmt_with_expected(
         end
         lists.push(env.binding_names, target)
         lists.push(env.binding_ty_tags, inferred)
+        lists.push(env.binding_mutable, lists.get(sp.mutable_flags, stmt_id))
     elif tag == 2 -- Return: check against expected_ret_tag
         const ret_inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
         if expected_ret_tag != 0 and ret_inferred != 0
@@ -120,9 +124,29 @@ public check_stmt_with_expected(
         end
     elif tag == 3 -- Expr
         infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
-    elif tag == 4 -- If
+    elif tag == 6 -- Assignment to an existing mutable local.
+        var index = lists.len(env.binding_names) - 1
+        var found = false
+        while index >= 0
+            if target == lists.get(env.binding_names, index)
+                found = true
+                if lists.get(env.binding_mutable, index) != 1
+                    ds.emit_error(sink, "type.assign_const", "assignment to immutable binding: " + target, "declare the binding with var")
+                end
+                const value_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+                if value_ty != 0 and value_ty != lists.get(env.binding_ty_tags, index)
+                    ds.emit_error(sink, "type.type_mismatch", "assignment type does not match binding: " + target, "assign a value of the declared type")
+                end
+                break
+            end
+            index = index - 1
+        end
+        if not found
+            ds.emit_error(sink, "name.undefined", "assignment to undefined binding: " + target, "declare the binding before assignment")
+        end
+    elif tag == 4 or tag == 5 -- If / While
         const cond_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
-        if cond_ty != 3 and cond_ty != 1 and cond_ty != 0
+        if cond_ty != 3 and cond_ty != 0
             ds.emit_error(sink, "type.condition_not_bool", "condition must be of bool type", "wrap with comparison or boolean call")
         end
     end
@@ -179,12 +203,45 @@ public check_function_statement_range_in_module(
     func_ret_tys: list[string]
 ) -> int
     const expected_ret_tag = type_str_to_tag(fn_ret_ty)
-    var i = first_stmt
-    while i < last_stmt
-        check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag, func_names, func_ret_tys)
+    check_block(env, sink, sp, pool, first_stmt, last_stmt, expected_ret_tag, func_names, func_ret_tys, false)
+    return ds.error_count(sink)
+end
+
+clone_env(env: TypeEnv) -> TypeEnv
+    const out = new_env()
+    var i = 0
+    while i < lists.len(env.binding_names)
+        lists.push(out.binding_names, lists.get(env.binding_names, i))
+        lists.push(out.binding_ty_tags, lists.get(env.binding_ty_tags, i))
+        lists.push(out.binding_mutable, lists.get(env.binding_mutable, i))
         i = i + 1
     end
-    return ds.error_count(sink)
+    return out
+end
+
+check_block(env: TypeEnv, sink: ds.DiagnosticSink, sp: stmts.StmtPool, pool: exprs.ExprPool, first_stmt: int, last_stmt: int, expected_ret_tag: int, func_names: list[string], func_ret_tys: list[string], in_loop: bool)
+    var i = first_stmt
+    while i < last_stmt
+        const tag = lists.get(sp.kind_tags, i)
+        check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag, func_names, func_ret_tys)
+        const subtree_end = lists.get(sp.subtree_ends, i)
+        if tag == 4
+            const else_start = lists.get(sp.branch_starts, i)
+            check_block(clone_env(env), sink, sp, pool, i + 1, else_start, expected_ret_tag, func_names, func_ret_tys, in_loop)
+            check_block(clone_env(env), sink, sp, pool, else_start, subtree_end, expected_ret_tag, func_names, func_ret_tys, in_loop)
+        elif tag == 5
+            check_block(clone_env(env), sink, sp, pool, i + 1, subtree_end, expected_ret_tag, func_names, func_ret_tys, true)
+        elif tag == 7 or tag == 8
+            if not in_loop
+                ds.emit_error(sink, "type.loop_control_outside_loop", "break or continue outside a loop", "use break or continue inside while")
+            end
+        end
+        if subtree_end <= i
+            i = i + 1
+        else
+            i = subtree_end
+        end
+    end
 end
 
 public binding_count(env: TypeEnv) -> int
