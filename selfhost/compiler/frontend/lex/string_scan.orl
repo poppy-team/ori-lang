@@ -1,5 +1,6 @@
 module selfhost.compiler.frontend.lex.string_scan
 
+import ori.bytes as bs
 import ori.string as su
 
 public struct StrScanResult
@@ -13,12 +14,13 @@ public struct StrScanResult
 end
 
 public scan_string_full(source: string, start: int, len: int) -> StrScanResult
+    const data = su.to_bytes(source)
     var cur = start
     var is_fstr = false
     var is_bytes = false
 
     if cur < len
-        const b = char_byte(source, cur)
+        const b = char_byte(data, cur)
         if b == 102 -- 'f'
             is_fstr = true
             cur = cur + 1
@@ -28,11 +30,11 @@ public scan_string_full(source: string, start: int, len: int) -> StrScanResult
         end
     end
 
-    if cur + 2 < len and char_byte(source, cur) == 34 and char_byte(source, cur + 1) == 34 and char_byte(source, cur + 2) == 34
-        return scan_triple(source, start, cur + 3, len, is_fstr)
+    if cur + 2 < len and char_byte(data, cur) == 34 and char_byte(data, cur + 1) == 34 and char_byte(data, cur + 2) == 34
+        return scan_triple(data, start, cur + 3, len, is_fstr)
     end
 
-    if cur >= len or char_byte(source, cur) != 34
+    if cur >= len or char_byte(data, cur) != 34
         return scan_error(start, "parse.expected_string")
     end
 
@@ -41,11 +43,11 @@ public scan_string_full(source: string, start: int, len: int) -> StrScanResult
     var brace_depth = 0
 
     while cur < len
-        const b = char_byte(source, cur)
+        const b = char_byte(data, cur)
 
         if b == 34 -- closing quote
             cur = cur + 1
-            const full = su.slice(source, start, cur)
+            const full = byte_text(data, start, cur)
             return StrScanResult {
                 raw: full,
                 decoded: decoded,
@@ -61,14 +63,22 @@ public scan_string_full(source: string, start: int, len: int) -> StrScanResult
             if cur + 1 >= len
                 return scan_error(start, "parse.unclosed_string")
             end
-            const e = char_byte(source, cur + 1)
+            const e = char_byte(data, cur + 1)
             if is_bytes and e == 117 -- \u in bytes
                 return scan_error(start, "parse.byte_unicode_escape")
+            end
+            if e == 48
+                -- The current Ori string concatenation path loses embedded
+                -- NUL bytes. Reject the literal until it preserves them.
+                return scan_error(start, "parse.unsupported_nul_escape")
+            end
+            if e != 110 and e != 114 and e != 116 and e != 34 and e != 92
+                return scan_error(start, "parse.invalid_escape")
             end
             decoded = decoded + decode_single_escape(e)
             cur = cur + 2
         elif b == 123 and is_fstr -- '{'
-            if cur + 1 < len and char_byte(source, cur + 1) == 123 -- '{{'
+            if cur + 1 < len and char_byte(data, cur + 1) == 123 -- '{{'
                 decoded = decoded + "{"
                 cur = cur + 2
             else
@@ -77,7 +87,7 @@ public scan_string_full(source: string, start: int, len: int) -> StrScanResult
                 cur = cur + 1
             end
         elif b == 125 and is_fstr -- '}'
-            if cur + 1 < len and char_byte(source, cur + 1) == 125 -- '}}'
+            if cur + 1 < len and char_byte(data, cur + 1) == 125 -- '}}'
                 decoded = decoded + "}"
                 cur = cur + 2
             elif brace_depth == 0
@@ -88,8 +98,19 @@ public scan_string_full(source: string, start: int, len: int) -> StrScanResult
                 cur = cur + 1
             end
         else
-            decoded = decoded + su.slice(source, cur, cur + 1)
-            cur = cur + 1
+            var width = 1
+            if b >= 240
+                width = 4
+            elif b >= 224
+                width = 3
+            elif b >= 192
+                width = 2
+            end
+            if cur + width > len
+                return scan_error(start, "parse.invalid_utf8")
+            end
+            decoded = decoded + byte_text(data, cur, cur + width)
+            cur = cur + width
         end
     end
 
@@ -107,8 +128,6 @@ decode_single_escape(b: int) -> string
         return char_from_byte(34)
     elif b == 92 -- backslash
         return char_from_byte(92)
-    elif b == 48 -- null
-        return char_from_byte(0)
     end
     return ""
 end
@@ -128,23 +147,23 @@ char_from_byte(b: int) -> string
     return "?"
 end
 
-scan_triple(source: string, start: int, body_start: int, len: int, is_fstr: bool) -> StrScanResult
+scan_triple(data: bytes, start: int, body_start: int, len: int, is_fstr: bool) -> StrScanResult
     var cur = body_start
     -- Strip single leading newline
-    if cur < len and char_byte(source, cur) == 13
+    if cur < len and char_byte(data, cur) == 13
         cur = cur + 1
-        if cur < len and char_byte(source, cur) == 10
+        if cur < len and char_byte(data, cur) == 10
             cur = cur + 1
         end
-    elif cur < len and char_byte(source, cur) == 10
+    elif cur < len and char_byte(data, cur) == 10
         cur = cur + 1
     end
 
     const content_start = cur
     while cur + 2 < len
-        if char_byte(source, cur) == 34 and char_byte(source, cur + 1) == 34 and char_byte(source, cur + 2) == 34
-            const raw_content = su.slice(source, content_start, cur)
-            const full = su.slice(source, start, cur + 3)
+        if char_byte(data, cur) == 34 and char_byte(data, cur + 1) == 34 and char_byte(data, cur + 2) == 34
+            const raw_content = byte_text(data, content_start, cur)
+            const full = byte_text(data, start, cur + 3)
             return StrScanResult {
                 raw: full,
                 decoded: raw_content,
@@ -172,10 +191,16 @@ scan_error(start: int, code: string) -> StrScanResult
     }
 end
 
-char_byte(source: string, idx: int) -> int
-    if idx < 0 or idx >= su.len(source)
+char_byte(data: bytes, idx: int) -> int
+    if idx < 0 or idx >= bs.len(data)
         return -1
     end
-    const b = su.to_bytes(su.slice(source, idx, idx + 1))
-    return int(ori.bytes.get(b, 0))
+    return int(bs.get(data, idx))
+end
+
+byte_text(data: bytes, start: int, stop_idx: int) -> string
+    match bs.decode_utf8(bs.slice(data, start, stop_idx))
+    case ok(value): return value
+    case err(_): return ""
+    end
 end

@@ -134,6 +134,10 @@ public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> op
     case StrLit(value):
         const id = alloc_expr_raw(pool, 2, -1, -1, value)
         return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case BytesLit(raw):
+        -- A byte sequence cannot be passed as a String by the scalar bridge.
+        const id = alloc_expr_raw(pool, 12, -1, -1, raw)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
     case FStrLit(raw):
         -- Treat interpolation as its own expression until it has real lowering.
         const id = alloc_expr_raw(pool, 9, -1, -1, raw)

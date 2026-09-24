@@ -81,6 +81,31 @@ test -x "$work/hello-stage0" && test -x "$work/hello-stage1"
 "$work/hello-stage1" > "$work/hello-stage1.stdout"
 cmp "$work/hello-stage0.stdout" "$work/hello-stage1.stdout"
 
+cat > "$work/escaped-print.orl" <<'ORI'
+module bootstrap.escaped_print
+import ori.io as io
+main()
+    io.println("\"wrapped\"")
+    io.println("line one\nline two")
+    io.println("café\t開発")
+end
+ORI
+echo 'Stage 0/1: UTF-8 and escaped string contents in the JSON request'
+"$stage0" compile "$work/escaped-print.orl" -o "$work/escaped-print-stage0"
+"$work/ori-stage1" compile "$work/escaped-print.orl" -o "$work/escaped-print-stage1"
+"$work/escaped-print-stage0" > "$work/escaped-print-stage0.stdout"
+"$work/escaped-print-stage1" > "$work/escaped-print-stage1.stdout"
+cmp "$work/escaped-print-stage0.stdout" "$work/escaped-print-stage1.stdout"
+python3 - "$work/escaped-print-stage1.tmp.o.req.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as request_file:
+    body = json.load(request_file)["module"]["funcs"][0]["body_stmts"]
+strings = [stmt["Expr"]["Call"]["args"][0]["StrLit"] for stmt in body]
+assert strings == ['"wrapped"', "line one\nline two", "café\t開発"], strings
+PY
+
 # Preserve the operator and return signature in the bridge request. Previously
 # the lexer discarded `->` and the flat expression pool serialized `*`/`-` as
 # `+`, allowing a different program to pass a simple compile smoke check.
@@ -579,6 +604,27 @@ main()
     io.println(f"value: {value}")
 end
 ORI
+cat > "$work/bytes-literal.orl" <<'ORI'
+module bootstrap.bytes_literal
+import ori.io as io
+main()
+    io.println(b"bytes are not strings")
+end
+ORI
+cat > "$work/invalid-escape.orl" <<'ORI'
+module bootstrap.invalid_escape
+import ori.io as io
+main()
+    io.println("bad\q")
+end
+ORI
+cat > "$work/nul-literal.orl" <<'ORI'
+module bootstrap.nul_literal
+import ori.io as io
+main()
+    io.println("zero\0end")
+end
+ORI
 cat > "$work/multiple-arguments.orl" <<'ORI'
 module bootstrap.multiple_arguments
 main()
@@ -748,8 +794,15 @@ main() -> int
 end
 ORI
 echo 'Stage 1: unsupported source must fail closed'
-for name in interpolation multiple-arguments struct-declaration false-print local-io unknown-body invalid-byte missing-end unknown-call wrong-call-arity missing-parameter-argument mistyped-parameter-argument unsupported-parameter-type missing-parameter-colon leading-call-comma; do
+for name in interpolation bytes-literal multiple-arguments struct-declaration false-print local-io unknown-body invalid-byte missing-end unknown-call wrong-call-arity missing-parameter-argument mistyped-parameter-argument unsupported-parameter-type missing-parameter-colon leading-call-comma; do
     assert_unsupported "$name"
+done
+for name in invalid-escape nul-literal; do
+    if "$work/ori-stage1" compile "$work/$name.orl" -o "$work/$name.bin" > "$work/$name.log" 2>&1; then
+        echo "Stage 1 silently compiled a malformed or unsupported string: $name" >&2
+        exit 1
+    fi
+    test ! -e "$work/$name.bin"
 done
 
 # Resolve local value types and forward function signatures when checking a

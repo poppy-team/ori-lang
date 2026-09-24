@@ -12,6 +12,10 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Self-hosting progress
 
+- Stage 1 now escapes decoded UTF-8 strings correctly in bridge JSON,
+  preserving quote characters, tabs, and newlines. Bytes literals and
+  unsupported or malformed string escapes fail instead of emitting a
+  different string; the bootstrap compares the native output with Stage 0.
 - Stage 1 preserves chained `elif` arms as nested conditional branches in
   the native request. The bootstrap gate compares each arm's execution with
   Stage 0 and checks that the bridge request retains all branches. Unary

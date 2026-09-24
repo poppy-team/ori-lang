@@ -1,5 +1,6 @@
 module selfhost.compiler.bridge.body_emitter
 
+import ori.bytes as bs
 import ori.list as lists
 import ori.string as su
 import selfhost.compiler.frontend.parse.parse_expr as exprs
@@ -282,7 +283,7 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
         const raw = lists.get(pool.str_vals, id)
         return "{\"IntLit\":" + raw + "}"
     elif tag == 2 -- StrLit
-        const val = sanitize_json_str(lists.get(pool.str_vals, id))
+        const val = escape_json_str(lists.get(pool.str_vals, id))
         return "{\"StrLit\":\"" + val + "\"}"
     elif tag == 3 -- BoolLit
         const val = lists.get(pool.str_vals, id)
@@ -347,16 +348,44 @@ public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
     return "{\"IntLit\":0}"
 end
 
-sanitize_json_str(s: string) -> string
-    -- Strip outer quotes or f"..." prefix if present
-    var clean = s
-    if su.starts_with(clean, "f\"") and su.ends_with(clean, "\"") and su.len(clean) >= 3
-        clean = su.slice(clean, 2, su.len(clean) - 1)
-    elif su.starts_with(clean, "\"") and su.ends_with(clean, "\"") and su.len(clean) >= 2
-        clean = su.slice(clean, 1, su.len(clean) - 1)
+escape_json_str(s: string) -> string
+    -- StrLit stores decoded contents, never source delimiters. Copy complete
+    -- UTF-8 spans and encode every ASCII control byte before writing JSON.
+    const data = su.to_bytes(s)
+    const hex = "0123456789abcdef"
+    var escaped = ""
+    var segment_start = 0
+    var pos = 0
+    while pos < bs.len(data)
+        const byte = int(bs.get(data, pos))
+        var replacement = ""
+        if byte == 34
+            replacement = "\\\""
+        elif byte == 92
+            replacement = "\\\\"
+        elif byte == 10
+            replacement = "\\n"
+        elif byte == 13
+            replacement = "\\r"
+        elif byte == 9
+            replacement = "\\t"
+        elif byte < 32
+            replacement = "\\u00" + su.slice(hex, byte / 16, byte / 16 + 1) + su.slice(hex, byte % 16, byte % 16 + 1)
+        end
+        if replacement != ""
+            escaped = escaped + utf8_segment(data, segment_start, pos) + replacement
+            segment_start = pos + 1
+        end
+        pos = pos + 1
     end
-    const no_backslash = su.replace(clean, "\\", "\\\\")
-    return su.replace(no_backslash, "\"", "\\\"")
+    return escaped + utf8_segment(data, segment_start, pos)
+end
+
+utf8_segment(data: bytes, start: int, stop_idx: int) -> string
+    match bs.decode_utf8(bs.slice(data, start, stop_idx))
+    case ok(value): return value
+    case err(_): return ""
+    end
 end
 
 public emit_stmt_json(sp: stmts.StmtPool, pool: exprs.ExprPool, id: int) -> string

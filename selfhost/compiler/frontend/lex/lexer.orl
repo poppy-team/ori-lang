@@ -318,7 +318,7 @@ public next_token(lex: Lexer) -> NextOut
                     length: clean.length
                 }
                 if str_try.is_bytes
-                    return NextOut { token: some(tok.Token { kind: tok.TokenKind.StrLit(value: str_try.decoded), span: s_span }), next: after_str }
+                    return NextOut { token: some(tok.Token { kind: tok.TokenKind.BytesLit(raw: str_try.raw), span: s_span }), next: after_str }
                 elif str_try.is_fstr
                     return NextOut { token: some(tok.Token { kind: tok.TokenKind.FStrLit(raw: str_try.raw), span: s_span }), next: after_str }
                 else

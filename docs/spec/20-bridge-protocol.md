@@ -188,7 +188,11 @@ and `lib_mode`. `module` contains `namespace` and `funcs`; functions contain
 `Let` (with mutability), `Assign`, `Return`, `Expr`, `If`, `While`, `Break`,
 and `Continue`; expressions are `IntLit`, `StrLit`, `BoolLit`, `Var`, `Add`,
 `Binary`, `Call`, and scalar `IfExpr`. Arithmetic `%` and Boolean `and`/`or`
-have distinct operations and type validation. A built-in print call accepts zero or one string literal.
+have distinct operations and type validation. A built-in print call accepts
+zero or one string literal. String literals preserve their decoded UTF-8
+contents, including quotes, backslashes, tabs, and newlines, as JSON escapes.
+Bytes literals cannot be substituted for strings. The experimental lexer
+rejects unknown escapes and embedded NUL escapes until it can preserve them.
 Local calls with up to eight `Int` arguments and an `Int` or `Bool` return use the declared module signature,
 including forward calls. The bridge checks argument count and type before
 emitting an object. Calls requiring an unknown function signature are rejected
