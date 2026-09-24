@@ -96,9 +96,10 @@ started: 2026-09-07
 > Execução 207: cadeias `elif` e operadores unários passaram pelo stage1
 > nativo, com a mesma saída de stage0. O bootstrap continua reprovado apenas
 > ao solicitar stage2: `bridge.unsupported_ir` no corpo de `main.orl` e nos
-> imports com tipos compostos. A próxima revisão preserva strings UTF-8 e
-> escapes no JSON, recusa bytes e escapes que não consegue representar, e
-> aguarda confirmação em CI.
+> imports com tipos compostos. A execução 208 confirmou que stage1 compila e
+> executa strings UTF-8/escapadas como stage0, recusa bytes e escapes não
+> representados, e ainda termina na mesma recusa explícita antes de stage2.
+> Stage2 e stage3 ainda não foram produzidos.
 
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
