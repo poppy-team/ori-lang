@@ -124,6 +124,15 @@ started: 2026-09-07
 > stage1: `cmd_args.all`, listas e as definições importadas com tipos compostos
 > não cabem na IR atual; `BRIDGE_PAYLOAD_BYTES: 0`, sem stage2 ou stage3.
 
+> Execução 214: o stage1 compilou e executou `list[string]` com `[]`,
+> `ori.args.all` e `ori.list.len/get/push` com a mesma saída do stage0.
+> O teste de protocolo nativo da bridge passou antes do gate de bootstrap.
+> Stage1 ainda recusa a compilação do próprio `main.orl` em
+> `args.parse_cli(tokens)`, acesso aos campos do resultado, interpolação e
+> definições importadas com structs, enums e assinaturas genéricas;
+> `BRIDGE_PAYLOAD_BYTES: 0`, sem stage2/stage3. A próxima fatia confere os
+> tipos desses valores por todo o frontend e a bridge, mantendo o gate.
+
 ## 1. Objetivo
 Implementar o pipeline do compilador escrito diretamente em Ori sob arquitetura limpa (ADR-0006), dividindo as fases de frontend (`lex`, `parse`, `resolve`, `types`), representação intermediária (`hir`), e o protocolo isolado de IPC/Bridge (`CONTRACT01`) com o backend de geração de código nativo Cranelift existente em Rust.
 

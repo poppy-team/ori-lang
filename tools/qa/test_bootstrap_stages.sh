@@ -1121,11 +1121,16 @@ main()
     lists.push(values, 42)
 end
 ORI
+if "$work/ori-stage1" check "$work/wrong-list-element.orl" > "$work/wrong-list-element.check.log" 2>&1; then
+    echo 'Stage 1 accepted a wrong list element type during check' >&2
+    exit 1
+fi
+grep -q 'type.arg_type_mismatch' "$work/wrong-list-element.check.log"
 if "$work/ori-stage1" compile "$work/wrong-list-element.orl" -o "$work/wrong-list-element.bin" > "$work/wrong-list-element.log" 2>&1; then
     echo 'Stage 1 accepted a wrong list element type' >&2
     exit 1
 fi
-grep -q 'bridge.unsupported_ir' "$work/wrong-list-element.log"
+grep -q 'type.arg_type_mismatch' "$work/wrong-list-element.log"
 test ! -e "$work/wrong-list-element.bin"
 
 echo 'Stage 1 -> Stage 2 (must use Stage 1, not Stage 0)'

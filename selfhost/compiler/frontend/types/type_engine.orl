@@ -145,10 +145,37 @@ check_match_expr_in_env(env: TypeEnv, sink: ds.DiagnosticSink, pool: exprs.ExprP
         check_match_expr_in_env(env, sink, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
     elif tag == 6
         const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
         var arg = 0
-        while arg < lists.get(pool.call_arg_counts, id)
+        while arg < count
             check_match_expr_in_env(env, sink, pool, lists.get(pool.call_arg_ids, first + arg), func_names, func_ret_tys)
             arg = arg + 1
+        end
+        const callee = lists.get(pool.str_vals, id)
+        if callee == "ori.args.all" or callee == "ori.os.args"
+            if count != 0
+                ds.emit_error(sink, "type.arg_count_mismatch", "argument list function takes no arguments", "remove the arguments")
+            end
+        elif callee == "ori.list.len" or callee == "ori.list.get" or callee == "ori.list.push"
+            const expected = if callee == "ori.list.len" then 1 else 2
+            if count != expected
+                ds.emit_error(sink, "type.arg_count_mismatch", "wrong number of list arguments", "pass a list and the required value or index")
+            else
+                const first_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first), func_names, func_ret_tys)
+                if first_ty != 5 and first_ty != 6
+                    ds.emit_error(sink, "type.arg_type_mismatch", "list operation requires a typed list", "pass a list binding")
+                end
+                if count == 2
+                    const value_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first + 1), func_names, func_ret_tys)
+                    var required_ty = 1
+                    if callee == "ori.list.push" and first_ty == 5
+                        required_ty = 2
+                    end
+                    if value_ty != 0 and value_ty != required_ty
+                        ds.emit_error(sink, "type.arg_type_mismatch", "list argument has the wrong type", "use an index or element matching the list type")
+                    end
+                end
+            end
         end
     elif tag == 11
         check_match_expr_in_env(env, sink, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)

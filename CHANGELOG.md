@@ -15,7 +15,7 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Stage 1 serializes `list[string]` locals initialized from `[]` or
   `ori.args.all()` and uses typed `ori.list.len/get/push` through the existing
   native backend. Stage 0/1 execution parity and rejection of mismatched
-  element types are part of the bootstrap gate. This does not yet provide
+  element types in `check` and `compile` are part of the bootstrap gate. This does not yet provide
   structural types or full self-compilation.
 - Stage 1 preserves scalar `match` statements, including integer cases with a
   final fallback and exhaustive Boolean cases, through the native bridge.
