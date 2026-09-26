@@ -1,0 +1,31 @@
+module selfhost.compiler.frontend.types.const_eval
+
+public enum ConstValue
+    ConstInt(val: int)
+    ConstBool(val: bool)
+    ConstStr(val: string)
+    Unevaluated
+end
+
+public eval_binary_int(op: string, a: int, b: int) -> ConstValue
+    if op == "+"
+        return ConstValue.ConstInt(val: a + b)
+    elif op == "-"
+        return ConstValue.ConstInt(val: a - b)
+    elif op == "*"
+        return ConstValue.ConstInt(val: a * b)
+    elif op == "/"
+        if b != 0
+            return ConstValue.ConstInt(val: a / b)
+        end
+        return ConstValue.Unevaluated
+    end
+    return ConstValue.Unevaluated
+end
+
+public is_known_int(v: ConstValue) -> bool
+    match v
+    case ConstInt(val): return true
+    case else: return false
+    end
+end

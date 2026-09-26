@@ -1,0 +1,28 @@
+module selfhost.probes.lexer_primitives
+
+import ori.io as io
+
+struct Token
+    kind: string
+    lexeme: string
+    start_pos: int
+    end_pos: int
+end
+
+make_token(kind: string, lexeme: string, start_pos: int, end_pos: int) -> Token
+    return Token {
+        kind: kind,
+        lexeme: lexeme,
+        start_pos: start_pos,
+        end_pos: end_pos
+    }
+end
+
+main()
+    const tok: Token = make_token("Ident", "variable_name", 0, 13)
+    if tok.kind == "Ident"
+        io.println(f"PROBE_OK: {tok.kind} - {tok.lexeme} [{tok.start_pos}..{tok.end_pos}]")
+    else
+        io.println("PROBE_FAIL: token kind mismatch")
+    end
+end

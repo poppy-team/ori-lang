@@ -1,0 +1,44 @@
+module selfhost.compiler.frontend.types.generics
+
+import ori.list as lists
+
+public struct GenericParam
+    name: string
+    index: int
+end
+
+public struct InstantiationContext
+    param_names: list[string]
+    arg_type_ids: list[int]
+end
+
+public new_instantiation() -> InstantiationContext
+    const empty_params: list[string] = []
+    const empty_args: list[int] = []
+    return InstantiationContext {
+        param_names: empty_params,
+        arg_type_ids: empty_args
+    }
+end
+
+public bind_type_param(ctx: InstantiationContext, name: string, concrete_id: int)
+    lists.push(ctx.param_names, name)
+    lists.push(ctx.arg_type_ids, concrete_id)
+end
+
+public resolve_param(ctx: InstantiationContext, name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(ctx.param_names)
+    while i < count
+        const cur = lists.get(ctx.param_names, i)
+        if cur == name
+            return some(lists.get(ctx.arg_type_ids, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public param_count(ctx: InstantiationContext) -> int
+    return lists.len(ctx.param_names)
+end

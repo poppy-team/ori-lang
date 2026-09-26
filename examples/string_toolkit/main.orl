@@ -3,12 +3,10 @@ module app.string_toolkit
 -- Demonstrates the Ori string utility module.
 -- Covers text manipulation, search, formatting, and validation.
 
-imports
-    ori.io = io
-    ori.list = lists
-    ori.string = su
-    ori.validate = val
-end
+import ori.io as io
+import ori.list as lists
+import ori.string as su
+import ori.validate as val
 
 section(title: string)
     io.println("")

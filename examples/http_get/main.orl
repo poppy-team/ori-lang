@@ -1,10 +1,8 @@
 module app.main
 
-imports
-    ori.io = io
-    ori.net.http = http
-    ori.string = str
-end
+import ori.io as io
+import ori.net.http as http
+import ori.string as str
 
 -- STDLIB-2 thin client example (requires network).
 main()

@@ -1,0 +1,52 @@
+module selfhost.compiler.driver.cli_full
+
+public struct FullCliCommand
+    subcommand: string
+    has_help: bool
+    has_version: bool
+    is_release: bool
+    target_triple: string
+    extra_flags: list[string]
+end
+
+public new_full_cli() -> FullCliCommand
+    const empty_f: list[string] = []
+    return FullCliCommand {
+        subcommand: "",
+        has_help: false,
+        has_version: false,
+        is_release: false,
+        target_triple: "x86_64-unknown-linux-gnu",
+        extra_flags: empty_f
+    }
+end
+
+public parse_full_subcommand(cmd: string) -> int
+    -- Supported: 1=check, 2=compile, 3=run, 4=test, 5=build, 6=fmt, 7=lint, 8=doc, 9=repl, 10=doctor
+    if cmd == "check"
+        return 1
+    elif cmd == "compile"
+        return 2
+    elif cmd == "run"
+        return 3
+    elif cmd == "test"
+        return 4
+    elif cmd == "build"
+        return 5
+    elif cmd == "fmt"
+        return 6
+    elif cmd == "lint"
+        return 7
+    elif cmd == "doc"
+        return 8
+    elif cmd == "repl"
+        return 9
+    elif cmd == "doctor"
+        return 10
+    end
+    return 0
+end
+
+public is_known_command(code: int) -> bool
+    return code >= 1 and code <= 10
+end

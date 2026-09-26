@@ -20,3 +20,9 @@ usuário final não precisa de `cargo` nem `rustc`.
 
 O self-hosting é uma etapa futura (M4), não um requisito para instalar ou usar
 Ori. A definição de ABI está em [19-abi.md](../spec/19-abi.md).
+
+O compilador experimental em `selfhost/compiler/` já compila um subconjunto de
+programas por meio de `ori-bridge-server`, incluindo funções locais com um
+parâmetro `int`. O stage1 ainda não compila seu próprio código. O gate
+`tools/qa/test_bootstrap_stages.sh` só aprova o bootstrap quando stage1 gera
+stage2, stage2 gera stage3 e os três executam um programa comparável.

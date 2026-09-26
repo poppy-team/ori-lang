@@ -274,6 +274,34 @@ canonical_documents:
     audience: [user, contributor, maintainer]
     owns: [public-contract, experimental-contract, compatibility-classes]
 
+  - id: specification.bridge-protocol
+    path: docs/spec/20-bridge-protocol.md
+    domain: specification
+    status: current
+    audience: [compiler-contributor, runtime-contributor, maintainer]
+    owns: [bridge-protocol-contract, framing-schema, host-ipc-spec]
+
+  - id: archive.selfhost-journal
+    path: docs/archive/selfhost-journal/README.md
+    domain: archive
+    status: current
+    audience: [contributor, maintainer, user]
+    owns: [selfhost-journal, bootstrap-chronicle, modular-compiler-design]
+
+  - id: plan.selfhost-full-migration
+    path: docs/plans/active/selfhost-full-migration-plan.md
+    domain: planning
+    status: current
+    audience: [contributor, maintainer, agent]
+    owns: [full-selfhost-migration-roadmap, clean-code-submodules, multi-wave-bootstrap]
+
+  - id: plan.selfhost-remaining-gap-list
+    path: docs/plans/active/selfhost-remaining-gap-list.md
+    domain: planning
+    status: current
+    audience: [contributor, maintainer, agent]
+    owns: [exhaustive-selfhost-backlog, parity-inventory, end-to-end-gates]
+
   - id: implementation.index
     path: docs/implementation/README.md
     domain: implementation
@@ -482,6 +510,13 @@ canonical_documents:
     status: proposed
     audience: [contributor, maintainer, agent]
     owns: [decision-retire-c-backend, pipeline-reference-rust-native, self-host-target]
+
+  - id: decision.selfhost-modular-architecture
+    path: docs/decisions/adr/0006-selfhost-modular-architecture.md
+    domain: decisions
+    status: proposed
+    audience: [contributor, maintainer, agent]
+    owns: [decision-selfhost-modular-architecture, marco-b-architecture, clean-code-compiler-boundaries]
 
   - id: plans.index
     path: docs/plans/README.md

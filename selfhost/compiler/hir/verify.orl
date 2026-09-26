@@ -1,0 +1,21 @@
+module selfhost.compiler.hir.verify
+
+import ori.list as lists
+import selfhost.compiler.hir.lower_stmt as ls
+
+public alias VerifyResult = result[bool, string]
+
+public verify_block(bb: ls.BasicBlock) -> VerifyResult
+    const count = ls.block_stmt_count(bb)
+    if count == 0
+        return err(f"hir.empty_block: block {bb.label} has no instructions")
+    end
+
+    -- Last instruction must be a terminator (ReturnVal = 6)
+    const last_kind = lists.get(bb.stmt_kinds, count - 1)
+    if last_kind != 6
+        return err(f"hir.missing_terminator: block {bb.label} does not end with return or branch")
+    end
+
+    return ok(true)
+end

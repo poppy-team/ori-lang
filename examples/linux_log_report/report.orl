@@ -1,8 +1,6 @@
 module app.report
 
-imports
-    app.stats = stats
-end
+import app.stats as stats
 
 -- Keep presentation separate from file access so the analyzer is reusable.
 public render(log_path: string, summary: stats.LogStats) -> string

@@ -1,0 +1,30 @@
+module selfhost.compiler.hir.test_h1b1d1_full
+
+import ori.io as io
+import selfhost.compiler.driver.cli_full as cf
+import selfhost.compiler.hir.hir_full_nodes as hfn
+
+main()
+    -- 1. Full HIR node vocabulary verification
+    const mod_full = hfn.new_full_module()
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.LetStmt)
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.IfStmt)
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.WhileStmt)
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.ForStmt)
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.MatchStmt)
+    hfn.record_stmt_shape(mod_full, hfn.HirStmtFull.UsingStmt)
+    io.println(f"HIR_RECORDED_STMTS: {hfn.recorded_stmt_count(mod_full)}")
+    io.println(f"HIR_EXPR_VOCABULARY_SIZE: {hfn.expr_tag_count()}")
+
+    -- 2. Extended CLI subcommands
+    const code_check = cf.parse_full_subcommand("check")
+    const code_compile = cf.parse_full_subcommand("compile")
+    const code_build = cf.parse_full_subcommand("build")
+    const code_repl = cf.parse_full_subcommand("repl")
+    io.println(f"CLI_CHECK: {cf.is_known_command(code_check)}")
+    io.println(f"CLI_COMPILE: {cf.is_known_command(code_compile)}")
+    io.println(f"CLI_BUILD: {cf.is_known_command(code_build)}")
+    io.println(f"CLI_REPL: {cf.is_known_command(code_repl)}")
+
+    io.println("H1B1D1M7_SUITE_SUCCESS")
+end

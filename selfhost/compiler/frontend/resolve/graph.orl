@@ -1,0 +1,100 @@
+module selfhost.compiler.frontend.resolve.graph
+
+import ori.list as lists
+
+public struct ModuleGraph
+    names: list[string]
+    edge_from: list[int]
+    edge_to: list[int]
+end
+
+public new_graph() -> ModuleGraph
+    const empty_names: list[string] = []
+    const empty_from: list[int] = []
+    const empty_to: list[int] = []
+    return ModuleGraph {
+        names: empty_names,
+        edge_from: empty_from,
+        edge_to: empty_to
+    }
+end
+
+public register_module(graph: ModuleGraph, name: string) -> int
+    const existing = find_module(graph, name)
+    if existing != -1
+        return existing
+    end
+    const id = lists.len(graph.names)
+    lists.push(graph.names, name)
+    return id
+end
+
+public register_edge(graph: ModuleGraph, from_name: string, to_name: string)
+    const u = register_module(graph, from_name)
+    const v = register_module(graph, to_name)
+    lists.push(graph.edge_from, u)
+    lists.push(graph.edge_to, v)
+end
+
+find_module(graph: ModuleGraph, name: string) -> int
+    var i = 0
+    const count = lists.len(graph.names)
+    while i < count
+        if lists.get(graph.names, i) == name
+            return i
+        end
+        i = i + 1
+    end
+    return -1
+end
+
+public has_cycle(graph: ModuleGraph) -> bool
+    -- Pure integer DFS on edge arrays: zero string allocation, zero corruption risk
+    var root = 0
+    const node_count = lists.len(graph.names)
+    const edge_count = lists.len(graph.edge_from)
+
+    while root < node_count
+        const visited: list[int] = []
+        const stack: list[int] = []
+        lists.push(stack, root)
+
+        while lists.len(stack) > 0
+            const current = lists.pop(stack)
+            if not has_int(visited, current)
+                lists.push(visited, current)
+                var e = 0
+                while e < edge_count
+                    if lists.get(graph.edge_from, e) == current
+                        const next_node = lists.get(graph.edge_to, e)
+                        if next_node == root
+                            return true
+                        end
+                        if not has_int(visited, next_node)
+                            lists.push(stack, next_node)
+                        end
+                    end
+                    e = e + 1
+                end
+            end
+        end
+        root = root + 1
+    end
+    return false
+end
+
+has_int(list_ints: list[int], val: int) -> bool
+    var i = 0
+    const count = lists.len(list_ints)
+    while i < count
+        if lists.get(list_ints, i) == val
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end
+
+public module_count(graph: ModuleGraph) -> int
+    return lists.len(graph.names)
+end

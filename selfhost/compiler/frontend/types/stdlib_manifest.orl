@@ -1,0 +1,57 @@
+module selfhost.compiler.frontend.types.stdlib_manifest
+
+import ori.list as lists
+
+public struct ManifestEntry
+    full_path: string
+    return_shape: string
+end
+
+public struct StdlibManifest
+    paths: list[string]
+    return_shapes: list[string]
+end
+
+public new_manifest() -> StdlibManifest
+    const empty_paths: list[string] = []
+    const empty_shapes: list[string] = []
+    return StdlibManifest {
+        paths: empty_paths,
+        return_shapes: empty_shapes
+    }
+end
+
+public register_entry(manifest: StdlibManifest, path: string, return_shape: string)
+    lists.push(manifest.paths, path)
+    lists.push(manifest.return_shapes, return_shape)
+end
+
+public lookup_return_shape(manifest: StdlibManifest, path: string) -> optional[string]
+    var i = 0
+    const count = lists.len(manifest.paths)
+    while i < count
+        if lists.get(manifest.paths, i) == path
+            return some(lists.get(manifest.return_shapes, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public seed_layer1(manifest: StdlibManifest)
+    -- Seed the minimal Layer 1 surface used by the self-host compiler itself
+    register_entry(manifest, "ori.io.println", "void")
+    register_entry(manifest, "ori.list.push", "void")
+    register_entry(manifest, "ori.list.len", "int")
+    register_entry(manifest, "ori.list.get", "T")
+    register_entry(manifest, "ori.list.pop", "T")
+    register_entry(manifest, "ori.string.len", "int")
+    register_entry(manifest, "ori.string.slice", "string")
+    register_entry(manifest, "ori.string.trim", "string")
+    register_entry(manifest, "ori.fs.read_text", "result[string,string]")
+    register_entry(manifest, "ori.json.parse", "result[Value,string]")
+end
+
+public entry_count(manifest: StdlibManifest) -> int
+    return lists.len(manifest.paths)
+end

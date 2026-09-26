@@ -1,0 +1,14 @@
+module selfhost.compiler.bridge.test_module5_full
+
+import ori.io as io
+import selfhost.compiler.bridge.serde_full as sf
+
+main()
+    const payload = sf.build_payload("main", "int")
+    sf.emit_load_const_step(payload, "x", 42)
+    sf.emit_return_step(payload, "x")
+
+    const bridge_json = sf.payload_to_bridge_json(payload, "/tmp/out_from_ori.o")
+    io.println(f"PAYLOAD_GENERATED: {bridge_json}")
+    io.println("MODULE5_ALL_TESTS_SUCCESS")
+end

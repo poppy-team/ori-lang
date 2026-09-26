@@ -1,0 +1,264 @@
+module selfhost.compiler.driver.module_linker
+
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.bridge.body_emitter as emitter
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.file_parser as fp
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+import selfhost.compiler.frontend.resolve.graph_loader as graph_loader
+import selfhost.compiler.frontend.types.type_engine as te
+import selfhost.compiler.hir.hir_node as hn
+
+public struct ModuleCatalog
+    files: list[fp.ParsedFile]
+    names: list[string]
+    func_names: list[string]
+    func_ret_tys: list[string]
+    func_param_counts: list[int]
+    func_public: list[int]
+end
+
+public build_catalog(root: fp.ParsedFile, loaded: graph_loader.LoadedGraph, sink: ds.DiagnosticSink) -> ModuleCatalog
+    const files: list[fp.ParsedFile] = []
+    const names: list[string] = []
+    const funcs: list[string] = []
+    const rets: list[string] = []
+    const counts: list[int] = []
+    const pub_flags: list[int] = []
+    lists.push(files, root)
+    lists.push(names, root.module_name)
+    var idx = 1
+    while idx < lists.len(loaded.names)
+        const module_name = lists.get(loaded.names, idx)
+        if graph_loader.module_loaded(loaded, module_name) and not su.starts_with(module_name, "ori.")
+            const source = lists.get(loaded.contents, idx)
+            const parsed = fp.parse_entire_file(lex.tokenize_all(source))
+            lists.push(files, parsed)
+            lists.push(names, module_name)
+        end
+        idx = idx + 1
+    end
+    idx = 0
+    while idx < lists.len(files)
+        const parsed = lists.get(files, idx)
+        var fn_idx = 0
+        while fn_idx < lists.len(parsed.func_names)
+            const name = lists.get(parsed.func_names, fn_idx)
+            if idx > 0 and name == "main"
+                ds.emit_error(sink, "bind.imported_entrypoint", "imported module declares main: " + parsed.module_name, "keep the entrypoint in the root module")
+            end
+            const canonical = if idx == 0 then name else parsed.module_name + "." + name
+            lists.push(funcs, canonical)
+            lists.push(rets, lists.get(parsed.func_ret_tys, fn_idx))
+            lists.push(counts, lists.get(parsed.func_param_counts, fn_idx))
+            lists.push(pub_flags, lists.get(parsed.func_is_public, fn_idx))
+            fn_idx = fn_idx + 1
+        end
+        idx = idx + 1
+    end
+    const catalog = ModuleCatalog {
+        files: files,
+        names: names,
+        func_names: funcs,
+        func_ret_tys: rets,
+        func_param_counts: counts,
+        func_public: pub_flags
+    }
+    rewrite_calls(catalog, sink)
+    return catalog
+end
+
+find_function(catalog: ModuleCatalog, name: string) -> int
+    var i = 0
+    while i < lists.len(catalog.func_names)
+        if lists.get(catalog.func_names, i) == name
+            return i
+        end
+        i = i + 1
+    end
+    return -1
+end
+
+known_nominal_type(catalog: ModuleCatalog, module_path: string, member: string) -> bool
+    var i = 0
+    while i < lists.len(catalog.files)
+        const file = lists.get(catalog.files, i)
+        if file.module_name == module_path
+            var j = 0
+            while j < lists.len(file.newtype_names)
+                if member == lists.get(file.newtype_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+            j = 0
+            while j < lists.len(file.struct_names)
+                if member == lists.get(file.struct_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+            j = 0
+            while j < lists.len(file.enum_names)
+                if member == lists.get(file.enum_names, j)
+                    return true
+                end
+                j = j + 1
+            end
+        end
+        i = i + 1
+    end
+    return false
+end
+
+module_complete(catalog: ModuleCatalog, module_path: string) -> bool
+    var i = 0
+    while i < lists.len(catalog.files)
+        const file = lists.get(catalog.files, i)
+        if file.module_name == module_path
+            return file.codegen_complete
+        end
+        i = i + 1
+    end
+    return false
+end
+
+-- Every qualified call must name a public member of a directly imported
+-- module. Local calls in imported modules acquire their canonical prefix.
+rewrite_calls(catalog: ModuleCatalog, sink: ds.DiagnosticSink)
+    var module_idx = 0
+    while module_idx < lists.len(catalog.files)
+        const parsed = lists.get(catalog.files, module_idx)
+        var expr_idx = 0
+        while expr_idx < lists.len(parsed.expr_kind_tags)
+            if lists.get(parsed.expr_kind_tags, expr_idx) == 6
+                const callee = lists.get(parsed.expr_str_vals, expr_idx)
+                var rewritten = false
+                var import_idx = 0
+                while import_idx < lists.len(parsed.import_aliases)
+                    const alias_name = lists.get(parsed.import_aliases, import_idx)
+                    const prefix = alias_name + "."
+                    if su.starts_with(callee, prefix)
+                        rewritten = true
+                        const path = lists.get(parsed.import_paths, import_idx)
+                        const member = su.slice(callee, su.len(prefix), su.len(callee))
+                        if path == "ori.io" and member == "println"
+                            -- This primitive is provided by the runtime.
+                        elif (path == "ori.args" and member == "all") or (path == "ori.os" and member == "args") or (path == "ori.list" and (member == "len" or member == "get" or member == "push"))
+                            lists.set(parsed.expr_str_vals, expr_idx, path + "." + member)
+                        elif su.starts_with(path, "ori.")
+                            -- Other standard library calls require runtime lowering.
+                        else
+                            const canonical = path + "." + member
+                            const def_index = find_function(catalog, canonical)
+                            if def_index == -1
+                                if module_complete(catalog, path) and not known_nominal_type(catalog, path, member)
+                                    ds.emit_error(sink, "name.undefined", "unknown imported function: " + canonical, "export a function with this name")
+                                end
+                            elif lists.get(catalog.func_public, def_index) != 1
+                                ds.emit_error(sink, "bind.private_import", "function is private: " + canonical, "declare the function public")
+                            else
+                                lists.set(parsed.expr_str_vals, expr_idx, canonical)
+                            end
+                        end
+                    end
+                    import_idx = import_idx + 1
+                end
+                if not rewritten and module_idx > 0
+                    const local_name = parsed.module_name + "." + callee
+                    if find_function(catalog, local_name) >= 0
+                        lists.set(parsed.expr_str_vals, expr_idx, local_name)
+                    end
+                end
+            end
+            expr_idx = expr_idx + 1
+        end
+        module_idx = module_idx + 1
+    end
+end
+
+public append_imported_functions(catalog: ModuleCatalog, module_ir: hn.HirModule, sink: ds.DiagnosticSink) -> bool
+    var supported = true
+    var module_idx = 1
+    while module_idx < lists.len(catalog.files)
+        const parsed = lists.get(catalog.files, module_idx)
+        if not parsed.codegen_complete
+            supported = false
+        end
+        const sp = stmts.StmtPool {
+            kind_tags: parsed.stmt_kind_tags,
+            expr_ids: parsed.stmt_expr_ids,
+            target_names: parsed.stmt_target_names,
+            type_annotations: parsed.stmt_type_annotations,
+            mutable_flags: parsed.stmt_mutable_flags,
+            branch_starts: parsed.stmt_branch_starts,
+            subtree_ends: parsed.stmt_subtree_ends
+        }
+        const exp = exprs.ExprPool {
+            kind_tags: parsed.expr_kind_tags,
+            left_ids: parsed.expr_left_ids,
+            right_ids: parsed.expr_right_ids,
+            third_ids: parsed.expr_third_ids,
+            str_vals: parsed.expr_str_vals,
+            call_arg_starts: parsed.expr_call_arg_starts,
+            call_arg_counts: parsed.expr_call_arg_counts,
+            call_arg_ids: parsed.expr_call_arg_ids
+        }
+        var io_alias = ""
+        var import_idx = 0
+        while import_idx < lists.len(parsed.import_paths)
+            if lists.get(parsed.import_paths, import_idx) == "ori.io"
+                io_alias = lists.get(parsed.import_aliases, import_idx)
+            end
+            import_idx = import_idx + 1
+        end
+        var fn_idx = 0
+        var param_offset = 0
+        while fn_idx < lists.len(parsed.func_names)
+            const fn_name = lists.get(parsed.func_names, fn_idx)
+            const ret_ty = lists.get(parsed.func_ret_tys, fn_idx)
+            const count = lists.get(parsed.func_param_counts, fn_idx)
+            const param_names: list[string] = []
+            const param_jsons: list[string] = []
+            const env = te.new_env()
+            var k = 0
+            if count > 8 or (ret_ty != "int" and ret_ty != "bool" and ret_ty != "string" and ret_ty != "void")
+                supported = false
+            end
+            while k < count
+                const param_name = lists.get(parsed.func_param_names, param_offset + k)
+                const param_ty = lists.get(parsed.func_param_tys, param_offset + k)
+                if param_ty != "int"
+                    supported = false
+                end
+                lists.push(param_names, param_name)
+                lists.push(param_jsons, "{\"name\":\"" + param_name + "\",\"ty\":\"Int\"}")
+                lists.push(env.binding_names, param_name)
+                lists.push(env.binding_ty_tags, te.type_str_to_tag(param_ty))
+                lists.push(env.binding_mutable, 0)
+                k = k + 1
+            end
+            param_offset = param_offset + count
+            const first = lists.get(parsed.func_first_stmt_idx, fn_idx)
+            const last = lists.get(parsed.func_last_stmt_idx, fn_idx)
+            if parsed.codegen_complete
+                te.check_function_statement_range_in_module(env, sink, sp, exp, first, last, ret_ty, catalog.func_names, catalog.func_ret_tys)
+            end
+            const body_ok = emitter.can_emit_range(sp, exp, first, last, ret_ty, io_alias, param_names, catalog.func_names, catalog.func_ret_tys, catalog.func_param_counts)
+            if not body_ok
+                supported = false
+            end
+            const body_json = if body_ok then emitter.emit_range_stmts_json(sp, exp, first, last, param_names, catalog.func_names, catalog.func_ret_tys, catalog.func_param_counts) else ""
+            lists.push(module_ir.func_names, parsed.module_name + "." + fn_name)
+            lists.push(module_ir.func_ret_tys, ret_ty)
+            lists.push(module_ir.func_param_jsons, su.join(param_jsons, ","))
+            lists.push(module_ir.func_body_jsons, body_json)
+            fn_idx = fn_idx + 1
+        end
+        module_idx = module_idx + 1
+    end
+    return supported
+end

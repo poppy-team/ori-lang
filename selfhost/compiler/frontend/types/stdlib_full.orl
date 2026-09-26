@@ -1,0 +1,66 @@
+module selfhost.compiler.frontend.types.stdlib_full
+
+import ori.list as lists
+
+public struct StdlibEntry
+    func_path: string
+    return_shape: string
+end
+
+public struct StdlibCatalog
+    paths: list[string]
+    shapes: list[string]
+end
+
+public new_catalog() -> StdlibCatalog
+    const empty_p: list[string] = []
+    const empty_s: list[string] = []
+    return StdlibCatalog {
+        paths: empty_p,
+        shapes: empty_s
+    }
+end
+
+public register_entry(catalog: StdlibCatalog, path: string, shape: string)
+    lists.push(catalog.paths, path)
+    lists.push(catalog.shapes, shape)
+end
+
+public lookup_stdlib_return(catalog: StdlibCatalog, path: string) -> optional[string]
+    var i = 0
+    const count = lists.len(catalog.paths)
+    while i < count
+        if lists.get(catalog.paths, i) == path
+            return some(lists.get(catalog.shapes, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public seed_collections(catalog: StdlibCatalog)
+    register_entry(catalog, "ori.list.len", "int")
+    register_entry(catalog, "ori.list.push", "void")
+    register_entry(catalog, "ori.list.get", "T")
+    register_entry(catalog, "ori.list.pop", "T")
+    register_entry(catalog, "ori.map.get", "optional[V]")
+    register_entry(catalog, "ori.map.set", "void")
+end
+
+public seed_strings(catalog: StdlibCatalog)
+    register_entry(catalog, "ori.string.len", "int")
+    register_entry(catalog, "ori.string.slice", "string")
+    register_entry(catalog, "ori.string.trim", "string")
+    register_entry(catalog, "ori.string.concat", "string")
+end
+
+public seed_io(catalog: StdlibCatalog)
+    register_entry(catalog, "ori.io.println", "void")
+    register_entry(catalog, "ori.fs.read_text", "result[string,string]")
+    register_entry(catalog, "ori.fs.write_text", "result[string,string]")
+    register_entry(catalog, "ori.json.parse", "result[Value,string]")
+end
+
+public catalog_count(catalog: StdlibCatalog) -> int
+    return lists.len(catalog.paths)
+end

@@ -10,7 +10,118 @@ e o projeto adere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Self-hosting progress
+
+- Stage 1 serializes `list[string]` locals initialized from `[]` or
+  `ori.args.all()` and uses typed `ori.list.len/get/push` through the existing
+  native backend. Stage 0/1 execution parity and rejection of mismatched
+  element types in `check` and `compile` are part of the bootstrap gate. This does not yet provide
+  structural types or full self-compilation.
+- Stage 1 preserves scalar `match` statements, including integer cases with a
+  final fallback and exhaustive Boolean cases, through the native bridge.
+  Each case body keeps lexical scope and loop context; incomplete, duplicate,
+  or mistyped patterns are rejected before native code generation. Bootstrap
+  fixtures compare stage0 and stage1 execution and cover a match in a
+  transitive imported function. Composite patterns remain unsupported.
+- Scalar `match` expressions preserve integer and Boolean patterns with
+  exhaustive branches, including string results and signed integer patterns.
+  A native parity fixture
+  compares their execution and checks the bridge payload.
+- String locals and assignments, typed functions returning strings, and
+  printing a string variable or result of a typed call now carry their value
+  through the bridge. The bootstrap compares the native output with Stage 0.
+- Stage 1 now escapes decoded UTF-8 strings correctly in bridge JSON,
+  preserving quote characters, tabs, and newlines. Bytes literals and
+  unsupported or malformed string escapes fail instead of emitting a
+  different string; the bootstrap compares the native output with Stage 0.
+- Stage 1 preserves chained `elif` arms as nested conditional branches in
+  the native request. The bootstrap gate compares each arm's execution with
+  Stage 0 and checks that the bridge request retains all branches. Unary
+  `not` and minus retain their meaning through Boolean conditions and integer
+  subtraction, with a native parity fixture.
+- Stage 1 now preserves nested `if`/`else` and `while` bodies, mutable local
+  assignments, and `break`/`continue` through the bridge. Calls can carry up
+  to eight integer arguments and grouped arithmetic expressions. Transitive
+  module discovery checks missing files, namespace mismatches, cycles, and
+  visibility; compatible imported scalar functions are linked into the same
+  native module. A diamond import fixture checks that a shared function is
+  linked once and both parents call it. The bootstrap gate compares these
+  cases with Stage 0. Full
+  self-compilation still needs collections, generics, enum patterns, string
+  interpolation, and their standard library/runtime operations.
+- The parser now retains generic and qualified type signatures, handles
+  inline `if` expressions with scalar branches, and keeps the following
+  declarations in scope. The scalar bridge also preserves `%`, `and`, `or`,
+  and `!=`. Unknown source bytes produce an invalid token so code generation
+  refuses the input instead of discarding it.
+- Stage 1 and the bridge now preserve `bool` local bindings and Boolean
+  variable reads, including an explicitly annotated binding. A new bootstrap
+  fixture compares native execution with Stage 0 and checks the `Bool` HIR
+  payload. Local annotations that disagree with their values report the
+  existing `type.type_mismatch` diagnostic.
+- Stage 1 now preserves one `int` parameter per local function through its
+  parser, scope checks, type checks, and bridge payload. Local forward calls
+  pass one supported integer argument; the bridge validates argument types and
+  lowers the declared signature. The bootstrap gate compares a compiled
+  parameter call with Stage 0 and rejects wrong arguments and leaked bindings.
+  Full self-compilation still requires control flow, collections, imported
+  definitions, and other expression forms.
+- Stage 1 and the experimental bridge now preserve typed calls to local
+  zero-argument functions returning `int`, including forward calls inside
+  integer expressions. The bootstrap gate compares their native execution
+  with Stage 0 and checks the serialized call; unsupported signatures and
+  argument lists still fail before code generation.
+- Stage 1 checks local bindings against each function's statement scope;
+  a binding from a later statement or another function no longer passes
+  `check`. The bootstrap script forces a fresh Stage 0 compilation of all
+  self-hosted modules so an incremental cache cannot reuse an older Stage 1.
+- The Stage 1 type checker resolves return types through local bindings,
+  forward calls to functions in the same module, and integer comparisons.
+  Its bootstrap checks valid boolean calls and rejects incompatible returns
+  from variables and functions during `check`.
+- The experimental bridge now emits zero-argument local calls returning
+  `bool`, boolean literals, and integer comparisons in boolean returns.
+  The bootstrap gate compares a native boolean call chain with Stage 0 and
+  inspects the `Bool` signatures and `Eq` operation in its bridge request.
+- The experimental frontend checks return types within each function's own
+  statement range. A later function no longer inherits the entry function's
+  return type; the bootstrap gate covers both valid and invalid signatures.
+- The experimental Stage 1 now keeps `->` return signatures and binary
+  operators and method receivers in its bridge payload. Unsupported interpolation,
+  unrepresentable call arguments, declarations and unparsed function tokens cause compilation to fail instead
+  of emitting a program with silently omitted or substituted code. The
+  bootstrap gate checks the serialized operators and negative cases. Its
+  minimal print path requires `import ori.io as io`, with the import retaining
+  namespace precedence over a same-named local binding.
+- The experimental Stage 1 parser now preserves keyword-named stdlib path
+  segments such as `ori.list` and `ori.string` in imports and module headers.
+  The bootstrap checks those imports before attempting self-compilation.
+- Stage 1 now exits with the driver result and reports bridge/link errors as
+  failures. Bootstrap verification requires Stage 1 to build Stage 2 and
+  Stage 2 to build Stage 3, then compares the built binaries. The bridge
+  rejects calls with unknown signatures instead of inventing C externs.
+  These changes expose remaining gaps; they do not establish a completed
+  self-hosted compiler or change the native ABI.
+- The experimental Ori client preserves `int`/`void` return types and rejects
+  parameters and statements absent from its emitter before native compilation.
+  The bridge rejects undefined variables and mismatched binding, return and
+  arithmetic types before code generation. The Linux CI now runs bridge
+  protocol and invalid-IR regression tests.
+- Updated the pinned `rustls` and `rustls-webpki` dependencies to address
+  RUSTSEC-2026-0285 while keeping the Cargo audit gate enabled.
+
 ### Fixed
+
+- **Collection equality/hash callbacks retain borrowed keys before calling Ori methods.**
+  Generated callbacks pass an owned reference for each managed method
+  parameter, matching the direct equality path. This avoids releasing a
+  map, set, or graph key while the collection still owns it. The native ABI
+  and runtime layouts are unchanged.
+
+- **Managed `ori.list.get` results keep their own reference.** A retrieved
+  struct, enum, string or collection remains valid when the source list later
+  removes or releases it. The native compiler retains the borrowed runtime
+  result before cleaning up temporary arguments; the native ABI is unchanged.
 
 - **Aggressive leaf inlining can materialize scalar argument temporaries.**
   Direct same-module calls used as the complete value of `Let`, `Return`, or

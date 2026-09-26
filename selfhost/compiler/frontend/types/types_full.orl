@@ -1,0 +1,140 @@
+module selfhost.compiler.frontend.types.types_full
+
+import ori.list as lists
+
+public enum TypeTag
+    -- Primitives (16)
+    Bool
+    Int
+    Int8
+    Int16
+    Int32
+    Int64
+    U8
+    U16
+    U32
+    U64
+    Float
+    Float32
+    Float64
+    String
+    Bytes
+    Void
+    -- Control flow and error sentinels (2)
+    Never
+    Error
+    -- Built-in containers & generics (11)
+    Optional(inner_id: int)
+    Result(ok_id: int, err_id: int)
+    List(elem_id: int)
+    Buffer(elem_id: int)
+    Slice(elem_id: int)
+    Array(elem_id: int, len: int)
+    Simd(elem_id: int, lanes: int)
+    Map(key_id: int, val_id: int)
+    Set(elem_id: int)
+    Range(elem_id: int)
+    Lazy(elem_id: int)
+    -- Concurrency & system handles (5)
+    Handle(inner_id: int)
+    Future(inner_id: int)
+    TaskJob(inner_id: int)
+    Channel(elem_id: int)
+    AtomicInt
+    -- Dynamic & nominal (3)
+    Any(trait_name: string)
+    Named(def_name: string)
+    InferVar(var_id: int)
+end
+
+public struct FullTypePool
+    type_tags: list[TypeTag]
+end
+
+public new_full_pool() -> FullTypePool
+    const empty_tags: list[TypeTag] = []
+    const pool = FullTypePool { type_tags: empty_tags }
+    -- Seed 18 primitives and sentinels at fixed indices 0..17
+    lists.push(pool.type_tags, TypeTag.Bool)
+    lists.push(pool.type_tags, TypeTag.Int)
+    lists.push(pool.type_tags, TypeTag.Int8)
+    lists.push(pool.type_tags, TypeTag.Int16)
+    lists.push(pool.type_tags, TypeTag.Int32)
+    lists.push(pool.type_tags, TypeTag.Int64)
+    lists.push(pool.type_tags, TypeTag.U8)
+    lists.push(pool.type_tags, TypeTag.U16)
+    lists.push(pool.type_tags, TypeTag.U32)
+    lists.push(pool.type_tags, TypeTag.U64)
+    lists.push(pool.type_tags, TypeTag.Float)
+    lists.push(pool.type_tags, TypeTag.Float32)
+    lists.push(pool.type_tags, TypeTag.Float64)
+    lists.push(pool.type_tags, TypeTag.String)
+    lists.push(pool.type_tags, TypeTag.Bytes)
+    lists.push(pool.type_tags, TypeTag.Void)
+    lists.push(pool.type_tags, TypeTag.Never)
+    lists.push(pool.type_tags, TypeTag.Error)
+    return pool
+end
+
+public alloc_composite_type(pool: FullTypePool, tag: TypeTag) -> int
+    const id = lists.len(pool.type_tags)
+    lists.push(pool.type_tags, tag)
+    return id
+end
+
+public total_types(pool: FullTypePool) -> int
+    return lists.len(pool.type_tags)
+end
+
+public alias FullUnifyResult = result[bool, string]
+
+public unify_with_occurs(pool: FullTypePool, a: int, b: int) -> FullUnifyResult
+    if a == b
+        return ok(true)
+    end
+    if a == 16 or b == 16 -- Never coerces to any expected type
+        return ok(true)
+    end
+    if a == 17 or b == 17 -- Error sentinel suppresses cascades
+        return ok(true)
+    end
+
+    -- Occurs-check: an infer var cannot unify with a container enclosing itself (e.g. T = list[T])
+    if has_cycle_reference(pool, a, b)
+        return err("type.cyclic_instantiation: recursive type without indirection")
+    end
+
+    return ok(true)
+end
+
+has_cycle_reference(pool: FullTypePool, needle: int, haystack: int) -> bool
+    if needle == haystack
+        return true
+    end
+    if haystack < 18
+        return false
+    end
+    const tag = lists.get(pool.type_tags, haystack)
+    match tag
+    case List(elem_id):
+        return elem_id == needle
+    case Optional(inner_id):
+        return inner_id == needle
+    case Result(ok_id, err_id):
+        return ok_id == needle or err_id == needle
+    case Buffer(elem_id):
+        return elem_id == needle
+    case Slice(elem_id):
+        return elem_id == needle
+    case Array(elem_id, len):
+        return elem_id == needle
+    case Map(key_id, val_id):
+        return key_id == needle or val_id == needle
+    case Set(elem_id):
+        return elem_id == needle
+    case Channel(elem_id):
+        return elem_id == needle
+    case else:
+        return false
+    end
+end

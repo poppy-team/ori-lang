@@ -1,9 +1,7 @@
 module app.tests
 
-imports
-    app.stats = stats
-    ori.test = test
-end
+import app.stats as stats
+import ori.test as test
 
 @test
 stats_count_severity_lines()

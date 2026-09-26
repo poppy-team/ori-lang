@@ -1,0 +1,206 @@
+module selfhost.compiler.frontend.lex.string_scan
+
+import ori.bytes as bs
+import ori.string as su
+
+public struct StrScanResult
+    raw: string
+    decoded: string
+    is_fstr: bool
+    is_triple: bool
+    is_bytes: bool
+    end_cursor: int
+    error_code: string
+end
+
+public scan_string_full(source: string, start: int, len: int) -> StrScanResult
+    const data = su.to_bytes(source)
+    var cur = start
+    var is_fstr = false
+    var is_bytes = false
+
+    if cur < len
+        const b = char_byte(data, cur)
+        if b == 102 -- 'f'
+            is_fstr = true
+            cur = cur + 1
+        elif b == 98 -- 'b'
+            is_bytes = true
+            cur = cur + 1
+        end
+    end
+
+    if cur + 2 < len and char_byte(data, cur) == 34 and char_byte(data, cur + 1) == 34 and char_byte(data, cur + 2) == 34
+        return scan_triple(data, start, cur + 3, len, is_fstr)
+    end
+
+    if cur >= len or char_byte(data, cur) != 34
+        return scan_error(start, "parse.expected_string")
+    end
+
+    cur = cur + 1
+    var decoded = ""
+    var brace_depth = 0
+
+    while cur < len
+        const b = char_byte(data, cur)
+
+        if b == 34 -- closing quote
+            cur = cur + 1
+            const full = byte_text(data, start, cur)
+            return StrScanResult {
+                raw: full,
+                decoded: decoded,
+                is_fstr: is_fstr,
+                is_triple: false,
+                is_bytes: is_bytes,
+                end_cursor: cur,
+                error_code: ""
+            }
+        end
+
+        if b == 92 -- backslash escape
+            if cur + 1 >= len
+                return scan_error(start, "parse.unclosed_string")
+            end
+            const e = char_byte(data, cur + 1)
+            if is_bytes and e == 117 -- \u in bytes
+                return scan_error(start, "parse.byte_unicode_escape")
+            end
+            if e == 48
+                -- The current Ori string concatenation path loses embedded
+                -- NUL bytes. Reject the literal until it preserves them.
+                return scan_error(start, "parse.unsupported_nul_escape")
+            end
+            if e != 110 and e != 114 and e != 116 and e != 34 and e != 92
+                return scan_error(start, "parse.invalid_escape")
+            end
+            decoded = decoded + decode_single_escape(e)
+            cur = cur + 2
+        elif b == 123 and is_fstr -- '{'
+            if cur + 1 < len and char_byte(data, cur + 1) == 123 -- '{{'
+                decoded = decoded + "{"
+                cur = cur + 2
+            else
+                brace_depth = brace_depth + 1
+                decoded = decoded + "{"
+                cur = cur + 1
+            end
+        elif b == 125 and is_fstr -- '}'
+            if cur + 1 < len and char_byte(data, cur + 1) == 125 -- '}}'
+                decoded = decoded + "}"
+                cur = cur + 2
+            elif brace_depth == 0
+                return scan_error(start, "parse.fstring_unmatched_brace")
+            else
+                brace_depth = brace_depth - 1
+                decoded = decoded + "}"
+                cur = cur + 1
+            end
+        else
+            var width = 1
+            if b >= 240
+                width = 4
+            elif b >= 224
+                width = 3
+            elif b >= 192
+                width = 2
+            end
+            if cur + width > len
+                return scan_error(start, "parse.invalid_utf8")
+            end
+            decoded = decoded + byte_text(data, cur, cur + width)
+            cur = cur + width
+        end
+    end
+
+    return scan_error(start, "parse.unclosed_string")
+end
+
+decode_single_escape(b: int) -> string
+    if b == 110 -- newline
+        return "\n"
+    elif b == 114 -- carriage return
+        return "\r"
+    elif b == 116 -- tab
+        return "\t"
+    elif b == 34 -- double quote
+        return char_from_byte(34)
+    elif b == 92 -- backslash
+        return char_from_byte(92)
+    end
+    return ""
+end
+
+char_from_byte(b: int) -> string
+    if b == 34
+        return "\""
+    elif b == 92
+        return "\\"
+    elif b == 10
+        return "\n"
+    elif b == 9
+        return "\t"
+    elif b == 13
+        return "\r"
+    end
+    return "?"
+end
+
+scan_triple(data: bytes, start: int, body_start: int, len: int, is_fstr: bool) -> StrScanResult
+    var cur = body_start
+    -- Strip single leading newline
+    if cur < len and char_byte(data, cur) == 13
+        cur = cur + 1
+        if cur < len and char_byte(data, cur) == 10
+            cur = cur + 1
+        end
+    elif cur < len and char_byte(data, cur) == 10
+        cur = cur + 1
+    end
+
+    const content_start = cur
+    while cur + 2 < len
+        if char_byte(data, cur) == 34 and char_byte(data, cur + 1) == 34 and char_byte(data, cur + 2) == 34
+            const raw_content = byte_text(data, content_start, cur)
+            const full = byte_text(data, start, cur + 3)
+            return StrScanResult {
+                raw: full,
+                decoded: raw_content,
+                is_fstr: is_fstr,
+                is_triple: true,
+                is_bytes: false,
+                end_cursor: cur + 3,
+                error_code: ""
+            }
+        end
+        cur = cur + 1
+    end
+    return scan_error(start, "parse.unclosed_triple_string")
+end
+
+scan_error(start: int, code: string) -> StrScanResult
+    return StrScanResult {
+        raw: "",
+        decoded: "",
+        is_fstr: false,
+        is_triple: false,
+        is_bytes: false,
+        end_cursor: start,
+        error_code: code
+    }
+end
+
+char_byte(data: bytes, idx: int) -> int
+    if idx < 0 or idx >= bs.len(data)
+        return -1
+    end
+    return int(bs.get(data, idx))
+end
+
+byte_text(data: bytes, start: int, stop_idx: int) -> string
+    match bs.decode_utf8(bs.slice(data, start, stop_idx))
+    case ok(value): return value
+    case err(_): return ""
+    end
+end

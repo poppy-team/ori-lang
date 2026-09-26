@@ -3,14 +3,12 @@ module examples.process_runner
 -- Canonical stdlib style: import ori.X (not ori.X.utils).
 -- Process capture uses the current L1 map and conversion helpers.
 
-imports
-    ori.convert = conv
-    ori.io = io
-    ori.map = maps
-    ori.os = os
-    ori.process = process
-    ori.string (trim_all)
-end
+import ori.convert as conv
+import ori.io as io
+import ori.map as maps
+import ori.os as os
+import ori.process as process
+import ori.string (trim_all)
 
 echo_command() -> string
     if os.platform() == "windows"

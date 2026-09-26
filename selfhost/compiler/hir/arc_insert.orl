@@ -1,0 +1,57 @@
+module selfhost.compiler.hir.arc_insert
+
+import ori.list as lists
+
+public newtype RefCount = int
+
+public struct LiveInterval
+    var_names: list[string]
+    born_at: list[int]
+    dies_at: list[int]
+end
+
+public new_intervals() -> LiveInterval
+    const empty_n: list[string] = []
+    const empty_b: list[int] = []
+    const empty_d: list[int] = []
+    return LiveInterval {
+        var_names: empty_n,
+        born_at: empty_b,
+        dies_at: empty_d
+    }
+end
+
+public open_interval(iv: LiveInterval, var_name: string, at_instr: int)
+    lists.push(iv.var_names, var_name)
+    lists.push(iv.born_at, at_instr)
+    lists.push(iv.dies_at, -1)
+end
+
+public close_interval(iv: LiveInterval, var_name: string, at_instr: int)
+    var i = 0
+    const count = lists.len(iv.var_names)
+    while i < count
+        if lists.get(iv.var_names, i) == var_name and lists.get(iv.dies_at, i) == -1
+            lists.set(iv.dies_at, i, at_instr)
+            return
+        end
+        i = i + 1
+    end
+end
+
+public interval_count(iv: LiveInterval) -> int
+    return lists.len(iv.var_names)
+end
+
+public leak_count(iv: LiveInterval) -> int
+    var leaked = 0
+    var i = 0
+    const count = lists.len(iv.var_names)
+    while i < count
+        if lists.get(iv.dies_at, i) == -1
+            leaked = leaked + 1
+        end
+        i = i + 1
+    end
+    return leaked
+end

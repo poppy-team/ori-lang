@@ -1,0 +1,29 @@
+module selfhost.compiler.frontend.resolve.visibility
+
+import ori.list as lists
+
+public struct VisState
+    is_public: bool
+end
+
+public public_vis() -> VisState
+    return VisState { is_public: true }
+end
+
+public private_vis() -> VisState
+    return VisState { is_public: false }
+end
+
+public exposed_names(names: list[string], visibilities: list[int]) -> list[string]
+    const out: list[string] = []
+    var i = 0
+    const count = lists.len(names)
+    while i < count and i < lists.len(visibilities)
+        const flag = lists.get(visibilities, i)
+        if flag == 1
+            lists.push(out, lists.get(names, i))
+        end
+        i = i + 1
+    end
+    return out
+end

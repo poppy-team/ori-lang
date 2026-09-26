@@ -1,0 +1,31 @@
+module selfhost.compiler.frontend.resolve.cycle_diag
+
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.frontend.resolve.graph as gr
+
+public struct CycleDiagnostic
+    has_error: bool
+    formatted_message: string
+end
+
+public check_and_format_cycle(graph: gr.ModuleGraph) -> CycleDiagnostic
+    if gr.has_cycle(graph)
+        const cycle_names: list[string] = []
+        var i = 0
+        const count = gr.module_count(graph)
+        while i < count
+            lists.push(cycle_names, lists.get(graph.names, i))
+            i = i + 1
+        end
+        const path_str = su.join(cycle_names, " -> ")
+        return CycleDiagnostic {
+            has_error: true,
+            formatted_message: f"error[project.circular_import]: circular module dependency detected: {path_str}"
+        }
+    end
+    return CycleDiagnostic {
+        has_error: false,
+        formatted_message: ""
+    }
+end

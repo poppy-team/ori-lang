@@ -1,0 +1,409 @@
+module selfhost.compiler.frontend.parse.parse_item
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+
+public struct Parser
+    tokens: list[tok.Token]
+    cursor: int
+    length: int
+end
+
+public new_parser(tokens: list[tok.Token]) -> Parser
+    return Parser {
+        tokens: tokens,
+        cursor: 0,
+        length: lists.len(tokens)
+    }
+end
+
+is_eof(p: Parser) -> bool
+    return p.cursor >= p.length
+end
+
+peek(p: Parser) -> optional[tok.Token]
+    if is_eof(p)
+        return none
+    end
+    return some(lists.get(p.tokens, p.cursor))
+end
+
+public struct AdvanceParserOut
+    token: optional[tok.Token]
+    next: Parser
+end
+
+advance(p: Parser) -> AdvanceParserOut
+    if is_eof(p)
+        return AdvanceParserOut { token: none, next: p }
+    end
+    const t = lists.get(p.tokens, p.cursor)
+    const moved = Parser {
+        tokens: p.tokens,
+        cursor: p.cursor + 1,
+        length: p.length
+    }
+    return AdvanceParserOut { token: some(t), next: moved }
+end
+
+public struct ParseItemOut
+    item: optional[node.ItemNode]
+    next: Parser
+end
+
+public parse_struct(p: Parser, id: int) -> ParseItemOut
+    const step = advance(p)
+    const cur = step.next
+    match peek(cur)
+    case some(t):
+        match t.kind
+        case Ident(name):
+            const name_step = advance(cur)
+            const after_name = name_step.next
+            const struct_name = node.Name { text: name, span: t.span }
+            var field_cur = after_name
+            const fields: list[node.FieldNode] = []
+
+            while not is_eof(field_cur)
+                match peek(field_cur)
+                case some(tok_field):
+                    match tok_field.kind
+                    case End:
+                        const end_step = advance(field_cur)
+                        const s_node = node.StructNode {
+                            id: node.NodeId(id),
+                            name: struct_name,
+                            fields: fields,
+                            span: t.span
+                        }
+                        return ParseItemOut {
+                            item: some(node.ItemNode.Struct(decl: s_node)),
+                            next: end_step.next
+                        }
+                    case Ident(name):
+                        const f_name = name
+                        const f_step = advance(field_cur)
+                        const colon_step = advance(f_step.next)
+                        const ty_step = advance(colon_step.next)
+                        match ty_step.token
+                        case some(ty_tok):
+                            match token_to_type_name(ty_tok)
+                            case some(ty_name):
+                                lists.push(fields, node.FieldNode {
+                                    name: node.Name { text: f_name, span: tok_field.span },
+                                    ty: ty_name
+                                })
+                                field_cur = ty_step.next
+                            case none:
+                                return ParseItemOut { item: none, next: ty_step.next }
+                            end
+                        case none:
+                            return ParseItemOut { item: none, next: field_cur }
+                        end
+                    case else:
+                        return ParseItemOut { item: none, next: field_cur }
+                    end
+                case none:
+                    return ParseItemOut { item: none, next: field_cur }
+                end
+            end
+            return ParseItemOut { item: none, next: field_cur }
+        case else:
+            return ParseItemOut { item: none, next: cur }
+        end
+    case none:
+        return ParseItemOut { item: none, next: cur }
+    end
+end
+
+public parse_enum(p: Parser, id: int) -> ParseItemOut
+    const step = advance(p)
+    const cur = step.next
+    match peek(cur)
+    case some(t):
+        match t.kind
+        case Ident(name):
+            const name_step = advance(cur)
+            const after_name = name_step.next
+            const enum_name = node.Name { text: name, span: t.span }
+            var variant_cur = after_name
+            const variants: list[node.VariantNode] = []
+
+            while not is_eof(variant_cur)
+                match peek(variant_cur)
+                case some(v_tok):
+                    match v_tok.kind
+                    case End:
+                        const end_step = advance(variant_cur)
+                        const e_node = node.EnumNode {
+                            id: node.NodeId(id),
+                            name: enum_name,
+                            variants: variants,
+                            span: t.span
+                        }
+                        return ParseItemOut {
+                            item: some(node.ItemNode.Enum(decl: e_node)),
+                            next: end_step.next
+                        }
+                    case Ident(name):
+                        const v_name = name
+                        const v_step = advance(variant_cur)
+                        const empty_fields: list[node.FieldNode] = []
+                        lists.push(variants, node.VariantNode {
+                            name: node.Name { text: v_name, span: v_tok.span },
+                            fields: empty_fields
+                        })
+                        variant_cur = v_step.next
+                    case else:
+                        return ParseItemOut { item: none, next: variant_cur }
+                    end
+                case none:
+                    return ParseItemOut { item: none, next: variant_cur }
+                end
+            end
+            return ParseItemOut { item: none, next: variant_cur }
+        case else:
+            return ParseItemOut { item: none, next: cur }
+        end
+    case none:
+        return ParseItemOut { item: none, next: cur }
+    end
+end
+
+token_to_type_name(t: tok.Token) -> optional[string]
+    match t.kind
+    case Ident(name): return some(name)
+    case IntTy: return some("int")
+    case StringTy: return some("string")
+    case BoolTy: return some("bool")
+    case FloatTy: return some("float")
+    case Void: return some("void")
+    case BytesTy: return some("bytes")
+    case List: return some("list")
+    case Map: return some("map")
+    case Set: return some("set")
+    case Optional: return some("optional")
+    case ResultKw: return some("result")
+    case Int8Ty: return some("i8")
+    case Int16Ty: return some("i16")
+    case Int32Ty: return some("i32")
+    case Int64Ty: return some("i64")
+    case U8Ty: return some("u8")
+    case U16Ty: return some("u16")
+    case U32Ty: return some("u32")
+    case U64Ty: return some("u64")
+    case Float32Ty: return some("float32")
+    case Float64Ty: return some("float64")
+    case else: return none
+    end
+end
+
+public struct SignatureTypeOut
+    name: string
+    next: Parser
+end
+
+-- Preserve the whole type spelling and its cursor, including nested generic
+-- parameters and qualified nominal names. Lowering can reject unsupported
+-- types without losing the surrounding function declaration.
+parse_signature_type(p: Parser) -> optional[SignatureTypeOut]
+    match peek(p)
+    case none:
+        return none
+    case some(first):
+        match token_to_type_name(first)
+        case none:
+            return none
+        case some(base):
+            var name = base
+            var cur = advance(p).next
+            var scanning = true
+            while scanning and not is_eof(cur)
+                match peek(cur)
+                case some(part):
+                    match part.kind
+                    case Dot:
+                        const dot_step = advance(cur)
+                        match peek(dot_step.next)
+                        case some(segment):
+                            match token_to_type_name(segment)
+                            case some(piece):
+                                name = name + "." + piece
+                                cur = advance(dot_step.next).next
+                            case none:
+                                return none
+                            end
+                        case none:
+                            return none
+                        end
+                    case LBracket:
+                        name = name + "["
+                        cur = advance(cur).next
+                        var depth = 1
+                        while depth > 0 and not is_eof(cur)
+                            match peek(cur)
+                            case some(inner):
+                                match inner.kind
+                                case LBracket:
+                                    name = name + "["
+                                    depth = depth + 1
+                                case RBracket:
+                                    name = name + "]"
+                                    depth = depth - 1
+                                case Comma:
+                                    name = name + ","
+                                case Dot:
+                                    name = name + "."
+                                case else:
+                                    match token_to_type_name(inner)
+                                    case some(piece):
+                                        name = name + piece
+                                    case none:
+                                        return none
+                                    end
+                                end
+                                cur = advance(cur).next
+                            case none:
+                                return none
+                            end
+                        end
+                        if depth != 0
+                            return none
+                        end
+                    case else:
+                        scanning = false
+                    end
+                case none:
+                    scanning = false
+                end
+            end
+            return some(SignatureTypeOut { name: name, next: cur })
+        end
+    end
+end
+
+public parse_func_signature(p: Parser, id: int) -> ParseItemOut
+    var effective_p = p
+    match peek(effective_p)
+    case some(lead):
+        match lead.kind
+        case Public:
+            effective_p = advance(effective_p).next
+        case else:
+        end
+    case none:
+    end
+
+    match peek(effective_p)
+    case some(t):
+        match t.kind
+        case Ident(name):
+            const fn_name = name
+            const fn_step = advance(effective_p)
+            const cur = fn_step.next
+            match peek(cur)
+            case some(lp_tok):
+                match lp_tok.kind
+                case LParen:
+                    const lp_step = advance(cur)
+                    var param_cur = lp_step.next
+                    const params: list[node.ParamNode] = []
+
+                    while not is_eof(param_cur)
+                        match peek(param_cur)
+                        case some(ptok):
+                            match ptok.kind
+                            case RParen:
+                                const rp_step = advance(param_cur)
+                                const after_rp = rp_step.next
+                                var ret_ty = "void"
+                                var after_ret = after_rp
+
+                                match peek(after_rp)
+                                case some(arr_tok):
+                                    match arr_tok.kind
+                                    case Arrow:
+                                        const arr_step = advance(after_rp)
+                                        match parse_signature_type(arr_step.next)
+                                        case some(signature_ty):
+                                            ret_ty = signature_ty.name
+                                            after_ret = signature_ty.next
+                                        case none:
+                                            return ParseItemOut { item: none, next: arr_step.next }
+                                        end
+                                    case else:
+                                        after_ret = after_rp
+                                    end
+                                case none:
+                                    after_ret = after_rp
+                                end
+
+                                const f_node = node.FuncNode {
+                                    id: node.NodeId(id),
+                                    name: node.Name { text: fn_name, span: t.span },
+                                    params: params,
+                                    ret_ty: ret_ty,
+                                    body_stmt_ids: [],
+                                    span: t.span
+                                }
+                                return ParseItemOut {
+                                    item: some(node.ItemNode.Func(decl: f_node)),
+                                    next: after_ret
+                                }
+                            case Ident(name):
+                                const p_name = name
+                                const p_step = advance(param_cur)
+                                const colon_step = advance(p_step.next)
+                                match colon_step.token
+                                case some(colon_tok):
+                                    match colon_tok.kind
+                                    case Colon:
+                                    case else:
+                                        return ParseItemOut { item: none, next: colon_step.next }
+                                    end
+                                case none:
+                                    return ParseItemOut { item: none, next: colon_step.next }
+                                end
+                                match parse_signature_type(colon_step.next)
+                                case some(signature_ty):
+                                        lists.push(params, node.ParamNode {
+                                            name: node.Name { text: p_name, span: ptok.span },
+                                            ty: signature_ty.name
+                                        })
+                                        match peek(signature_ty.next)
+                                        case some(comma_tok):
+                                            match comma_tok.kind
+                                            case Comma:
+                                                const comma_step = advance(signature_ty.next)
+                                                param_cur = comma_step.next
+                                            case else:
+                                                param_cur = signature_ty.next
+                                            end
+                                        case none:
+                                            param_cur = signature_ty.next
+                                        end
+                                case none:
+                                    return ParseItemOut { item: none, next: param_cur }
+                                end
+                            case else:
+                                return ParseItemOut { item: none, next: param_cur }
+                            end
+                        case none:
+                            return ParseItemOut { item: none, next: param_cur }
+                        end
+                    end
+                    return ParseItemOut { item: none, next: param_cur }
+                case else:
+                    return ParseItemOut { item: none, next: cur }
+                end
+            case none:
+                return ParseItemOut { item: none, next: cur }
+            end
+        case else:
+            return ParseItemOut { item: none, next: p }
+        end
+    case none:
+        return ParseItemOut { item: none, next: p }
+    end
+end

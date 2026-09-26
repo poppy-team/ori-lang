@@ -1,0 +1,85 @@
+module selfhost.compiler.bridge.serde_full
+
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.hir.hir_node as hn
+
+public struct SerdeFuncPayload
+    name: string
+    ret_ty_shape: string
+    stmt_kinds: list[int]
+    stmt_names: list[string]
+    const_values: list[int]
+end
+
+public build_payload(func_name: string, ret_shape: string) -> SerdeFuncPayload
+    const empty_k: list[int] = []
+    const empty_n: list[string] = []
+    const empty_c: list[int] = []
+    return SerdeFuncPayload {
+        name: func_name,
+        ret_ty_shape: ret_shape,
+        stmt_kinds: empty_k,
+        stmt_names: empty_n,
+        const_values: empty_c
+    }
+end
+
+public emit_load_const_step(payload: SerdeFuncPayload, target: string, val: int)
+    lists.push(payload.stmt_kinds, 1) -- LoadConst
+    lists.push(payload.stmt_names, target)
+    lists.push(payload.const_values, val)
+end
+
+public emit_return_step(payload: SerdeFuncPayload, var_name: string)
+    lists.push(payload.stmt_kinds, 6) -- ReturnVal
+    lists.push(payload.stmt_names, var_name)
+    lists.push(payload.const_values, 0)
+end
+
+public payload_to_bridge_json(payload: SerdeFuncPayload, out_path: string) -> string
+    const stmts: list[string] = []
+    var i = 0
+    const count = lists.len(payload.stmt_kinds)
+    while i < count
+        const kind = lists.get(payload.stmt_kinds, i)
+        const target = lists.get(payload.stmt_names, i)
+        const cval = lists.get(payload.const_values, i)
+        if kind == 1
+            lists.push(stmts, f"{{\"Let\":{{\"name\":\"{target}\",\"ty\":\"Int\",\"value\":{{\"IntLit\":{cval}}}}}}}")
+        elif kind == 6
+            lists.push(stmts, f"{{\"Return\":{{\"Var\":\"{target}\"}}}}")
+        end
+        i = i + 1
+    end
+    const joined = su.join(stmts, ",")
+    const ret_ty = if payload.ret_ty_shape == "int" then "Int" else "Void"
+    return f"{{\"module\":{{\"namespace\":\"\",\"funcs\":[{{\"name\":\"{payload.name}\",\"params\":[],\"return_ty\":\"{ret_ty}\",\"body_stmts\":[{joined}],\"is_public\":true}}]}},\"output_path\":\"{out_path}\",\"lib_mode\":false}}"
+end
+
+public module_to_bridge_json(module_ir: hn.HirModule, out_path: string) -> string
+    const funcs_json: list[string] = []
+    var i = 0
+    const count = lists.len(module_ir.func_names)
+    while i < count
+        const fname = lists.get(module_ir.func_names, i)
+        const rtype = lists.get(module_ir.func_ret_tys, i)
+        const params = lists.get(module_ir.func_param_jsons, i)
+        const body = lists.get(module_ir.func_body_jsons, i)
+        var bridge_ret = "Void"
+        if rtype == "int"
+            bridge_ret = "Int"
+        end
+        if rtype == "bool"
+            bridge_ret = "Bool"
+        end
+        if rtype == "string"
+            bridge_ret = "String"
+        end
+        const fjson = f"{{\"name\":\"{fname}\",\"params\":[{params}],\"return_ty\":\"{bridge_ret}\",\"body_stmts\":[{body}],\"is_public\":true}}"
+        lists.push(funcs_json, fjson)
+        i = i + 1
+    end
+    const joined = su.join(funcs_json, ",")
+    return f"{{\"module\":{{\"namespace\":\"{module_ir.ns_name}\",\"funcs\":[{joined}]}},\"output_path\":\"{out_path}\",\"lib_mode\":false}}"
+end

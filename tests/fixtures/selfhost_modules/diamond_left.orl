@@ -1,0 +1,5 @@
+module tests.fixtures.selfhost_modules.diamond_left
+import tests.fixtures.selfhost_modules.diamond_shared as shared
+public compute(n: int) -> int
+    return shared.value(n) + 1
+end

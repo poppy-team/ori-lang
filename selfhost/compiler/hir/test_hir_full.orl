@@ -1,0 +1,31 @@
+module selfhost.compiler.hir.test_hir_full
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.hir.cleanup as cl
+import selfhost.compiler.hir.desugar as ds
+
+main()
+    -- 1. Test for-range desugaring
+    const loop_info = ds.desugar_for_range("i", 0, 10)
+    io.println(f"DESUGAR_LOOP_COND: {loop_info.condition_expr}")
+    io.println(f"DESUGAR_BODY_COUNT: {lists.len(loop_info.body_stmt_names)}")
+
+    -- 2. Test if-ok unwrap desugaring
+    const unwrap = ds.desugar_if_ok("value", "int")
+    io.println(f"DESUGAR_UNWRAP: {unwrap.binding_name} ok={unwrap.is_ok_branch}")
+
+    -- 3. Test ARC cleanup plan balance
+    const plan = cl.new_plan()
+    cl.emit_retain(plan, "my_list")
+    cl.emit_release(plan, "my_list")
+    io.println(f"CLEANUP_SITES: {cl.site_count(plan)}")
+    io.println(f"CLEANUP_BALANCED: {cl.is_balanced(plan)}")
+
+    -- 4. Negative test: unbalanced plan
+    const bad_plan = cl.new_plan()
+    cl.emit_retain(bad_plan, "leaked_ref")
+    io.println(f"CLEANUP_NEGATIVE_BALANCED: {cl.is_balanced(bad_plan)}")
+
+    io.println("ONDA4_HIR_COMPLETE_SUCCESS")
+end

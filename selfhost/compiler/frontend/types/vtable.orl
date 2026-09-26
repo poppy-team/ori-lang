@@ -1,0 +1,50 @@
+module selfhost.compiler.frontend.types.vtable
+
+import ori.list as lists
+
+public struct VtableSlot
+    trait_name: string
+    method_name: string
+    offset: int
+end
+
+public struct VtableLayout
+    trait_names: list[string]
+    method_names: list[string]
+    offsets: list[int]
+end
+
+public new_vtable_layout() -> VtableLayout
+    const empty_t: list[string] = []
+    const empty_m: list[string] = []
+    const empty_o: list[int] = []
+    return VtableLayout {
+        trait_names: empty_t,
+        method_names: empty_m,
+        offsets: empty_o
+    }
+end
+
+public add_slot(layout: VtableLayout, trait_name: string, method_name: string) -> int
+    const offset = lists.len(layout.offsets) * 8
+    lists.push(layout.trait_names, trait_name)
+    lists.push(layout.method_names, method_name)
+    lists.push(layout.offsets, offset)
+    return offset
+end
+
+public lookup_method_offset(layout: VtableLayout, trait_name: string, method_name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(layout.trait_names)
+    while i < count
+        if lists.get(layout.trait_names, i) == trait_name and lists.get(layout.method_names, i) == method_name
+            return some(lists.get(layout.offsets, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public slot_count(layout: VtableLayout) -> int
+    return lists.len(layout.offsets)
+end

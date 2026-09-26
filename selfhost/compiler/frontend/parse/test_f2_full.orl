@@ -1,0 +1,62 @@
+module selfhost.compiler.frontend.parse.test_f2_full
+
+import ori.io as io
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_expr as pe
+import selfhost.compiler.frontend.parse.postfix as pf
+import selfhost.compiler.frontend.parse.pratt as pr
+
+main()
+    -- 1. Bitwise precedence: a | b ^ c & d
+    const pool = pe.new_pool()
+    const toks1 = lex.tokenize_all("a | b ^ c & d")
+    const out1 = pr.parse_with_precedence(toks1, 0, pool, 0)
+    match out1
+    case some(p):
+        io.println(f"BITWISE_EXPR_OK: {p.expr_id}")
+    case none:
+        io.println("BITWISE_EXPR_FAIL")
+    end
+
+    -- 2. Range expression: 0..9
+    const toks2 = lex.tokenize_all("0..9")
+    const out2 = pr.parse_with_precedence(toks2, 0, pool, 0)
+    match out2
+    case some(p):
+        io.println(f"RANGE_EXPR_OK: {p.expr_id}")
+    case none:
+        io.println("RANGE_EXPR_FAIL")
+    end
+
+    -- 3. Field and tuple-index chain: user.name.0
+    const toks3 = lex.tokenize_all("user.name.0")
+    const out3 = pf.parse_postfix_chain(toks3, 0, pool)
+    match out3
+    case some(p):
+        io.println(f"FIELD_CHAIN_OK: {p.expr_id}")
+    case none:
+        io.println("FIELD_CHAIN_FAIL")
+    end
+
+    -- 4. Index access: arr[0]
+    const toks4 = lex.tokenize_all("arr[0]")
+    const out4 = pf.parse_postfix_chain(toks4, 0, pool)
+    match out4
+    case some(p):
+        io.println(f"INDEX_ACCESS_OK: {p.expr_id}")
+    case none:
+        io.println("INDEX_ACCESS_FAIL")
+    end
+
+    -- 5. is Type check: x is Circle
+    const toks5 = lex.tokenize_all("x is Circle")
+    const out5 = pf.parse_is_check(toks5, 0, pool)
+    match out5
+    case some(p):
+        io.println(f"IS_CHECK_OK: {p.expr_id}")
+    case none:
+        io.println("IS_CHECK_FAIL")
+    end
+
+    io.println("F2_EXPR_SUITE_SUCCESS")
+end

@@ -1,0 +1,25 @@
+module selfhost.compiler.frontend.lex.test_ops_and_comments
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+
+main()
+    -- 1. Bitwise operators
+    const s1 = lex.tokenize_all("a & b | c ^ ~d << 2 >> 1")
+    io.println(f"BITWISE_TOKENS: {lists.len(s1)}")
+
+    -- 2. Range operator '..' vs single '.'
+    const s2 = lex.tokenize_all("0..9 a.b 3.14")
+    io.println(f"RANGE_TOKENS: {lists.len(s2)}")
+
+    -- 3. Line comment skipped
+    const s3 = lex.tokenize_all("x + 1 -- this is line comment\ny")
+    io.println(f"LINE_COMMENT_TOKENS: {lists.len(s3)}")
+
+    -- 4. Block comment skipped
+    const s4 = lex.tokenize_all("x --| doc block comment |-- + y")
+    io.println(f"BLOCK_COMMENT_TOKENS: {lists.len(s4)}")
+
+    io.println("F1_LEXER_COMPLETE_SUCCESS")
+end

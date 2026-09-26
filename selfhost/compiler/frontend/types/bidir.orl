@@ -1,0 +1,53 @@
+module selfhost.compiler.frontend.types.bidir
+
+import ori.list as lists
+import selfhost.compiler.frontend.types.unify as uni
+
+public enum InferMode
+    Infer
+    CheckType
+end
+
+public struct BidirContext
+    pool: uni.TypePool
+    errors: list[string]
+end
+
+public new_bidir_context() -> BidirContext
+    const errs: list[string] = []
+    return BidirContext {
+        pool: uni.new_pool(),
+        errors: errs
+    }
+end
+
+public synth_int_lit(ctx: BidirContext) -> int
+    return 0
+end
+
+public synth_float_lit(ctx: BidirContext) -> int
+    return 1
+end
+
+public check_against(ctx: BidirContext, expected_id: int, actual_id: int, span_label: string) -> bool
+    const res = uni.unify(ctx.pool, expected_id, actual_id)
+    match res
+    case ok(_):
+        return true
+    case err(msg):
+        lists.push(ctx.errors, f"{msg} at {span_label}")
+        return false
+    end
+end
+
+public check_call_arity_bidir(ctx: BidirContext, callee: string, given: int, expected: int) -> bool
+    if given != expected
+        lists.push(ctx.errors, f"type.arity_mismatch: {callee} expects {expected} args, got {given}")
+        return false
+    end
+    return true
+end
+
+public fn_error_count(ctx: BidirContext) -> int
+    return lists.len(ctx.errors)
+end

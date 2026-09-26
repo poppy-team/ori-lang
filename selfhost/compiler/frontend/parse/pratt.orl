@@ -1,0 +1,143 @@
+module selfhost.compiler.frontend.parse.pratt
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+
+public binding_power(kind: tok.TokenKind) -> int
+    match kind
+    case DotDot:
+        return 5 -- range '..' has lowest binary precedence
+    case Pipe:
+        return 10 -- '|>' pipeline
+    case Or:
+        return 20 -- logical 'or'
+    case And:
+        return 30 -- logical 'and'
+    case Bar:
+        return 32 -- bitwise '|'
+    case Caret:
+        return 34 -- bitwise '^'
+    case Amp:
+        return 36 -- bitwise '&'
+    case EqEq:
+        return 40
+    case BangEq:
+        return 40
+    case Lt:
+        return 40
+    case LtEq:
+        return 40
+    case Gt:
+        return 40
+    case GtEq:
+        return 40
+    case Shl:
+        return 45 -- '<<'
+    case Shr:
+        return 45 -- '>>'
+    case Plus:
+        return 50
+    case Minus:
+        return 50
+    case Star:
+        return 60
+    case Slash:
+        return 60
+    case Percent:
+        return 60
+    case else:
+        return -1
+    end
+end
+
+public binary_op_kind(kind: tok.TokenKind) -> optional[node.BinaryOpKind]
+    match kind
+    case DotDot:
+        return some(node.BinaryOpKind.Range)
+    case Pipe:
+        return some(node.BinaryOpKind.Pipe)
+    case Or:
+        return some(node.BinaryOpKind.Or)
+    case And:
+        return some(node.BinaryOpKind.And)
+    case Bar:
+        return some(node.BinaryOpKind.Bor)
+    case Caret:
+        return some(node.BinaryOpKind.Bxor)
+    case Amp:
+        return some(node.BinaryOpKind.Band)
+    case EqEq:
+        return some(node.BinaryOpKind.Eq)
+    case BangEq:
+        return some(node.BinaryOpKind.Ne)
+    case Lt:
+        return some(node.BinaryOpKind.Lt)
+    case LtEq:
+        return some(node.BinaryOpKind.Le)
+    case Gt:
+        return some(node.BinaryOpKind.Gt)
+    case GtEq:
+        return some(node.BinaryOpKind.Ge)
+    case Shl:
+        return some(node.BinaryOpKind.Shl)
+    case Shr:
+        return some(node.BinaryOpKind.Shr)
+    case Plus:
+        return some(node.BinaryOpKind.Add)
+    case Minus:
+        return some(node.BinaryOpKind.Sub)
+    case Star:
+        return some(node.BinaryOpKind.Mul)
+    case Slash:
+        return some(node.BinaryOpKind.Div)
+    case Percent:
+        return some(node.BinaryOpKind.Mod)
+    case else:
+        return none
+    end
+end
+
+public struct PrattOut
+    expr_id: int
+    next_cursor: int
+end
+
+public parse_with_precedence(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool, min_power: int) -> optional[PrattOut]
+    match exprs.parse_binary_with_min(tokens, cursor, pool, min_power)
+    case none:
+        return none
+    case some(parsed):
+        return some(PrattOut { expr_id: parsed.expr_id, next_cursor: parsed.next_cursor })
+    end
+end
+
+public parse_comparison_chain_guard(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[string]
+    match parse_with_precedence(tokens, cursor, pool, 50)
+    case none:
+        return none
+    case some(first):
+        var cur = first.next_cursor
+        if cur >= lists.len(tokens)
+            return none
+        end
+        const probe = lists.get(tokens, cur)
+        match probe.kind
+        case Lt:
+            return some("parse.chained_comparison: a < b < c is a compile error")
+        case Gt:
+            return some("parse.chained_comparison: a > b > c is a compile error")
+        case LtEq:
+            return some("parse.chained_comparison: comparison chaining is a compile error")
+        case GtEq:
+            return some("parse.chained_comparison: comparison chaining is a compile error")
+        case EqEq:
+            return some("parse.chained_comparison: comparison chaining is a compile error")
+        case BangEq:
+            return some("parse.chained_comparison: comparison chaining is a compile error")
+        case else:
+            return none
+        end
+    end
+end

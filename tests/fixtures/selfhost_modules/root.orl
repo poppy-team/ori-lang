@@ -1,0 +1,5 @@
+module tests.fixtures.selfhost_modules.root
+import tests.fixtures.selfhost_modules.middle as middle
+main() -> int
+    return middle.compute(20, 2) - 42
+end

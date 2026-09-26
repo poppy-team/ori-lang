@@ -2,10 +2,8 @@ module app.tests_demo
 
 -- Run with: ori test examples/tests_demo
 -- No `main` — the test harness provides the entry point.
-imports
-    ori.test = test
-    ori.math = math
-end
+import ori.test as test
+import ori.math as math
 
 @test
 adds_one_and_one()

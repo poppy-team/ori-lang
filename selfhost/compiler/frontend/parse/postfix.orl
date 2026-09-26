@@ -1,0 +1,133 @@
+module selfhost.compiler.frontend.parse.postfix
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+
+public struct PostfixOut
+    expr_id: int
+    next_cursor: int
+end
+
+public parse_postfix_chain(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[PostfixOut]
+    match exprs.parse_primary(tokens, cursor, pool)
+    case none:
+        return none
+    case some(base):
+        var cur = base.next_cursor
+        var current = base.expr_id
+
+        while cur < lists.len(tokens)
+            const t = lists.get(tokens, cur)
+            match t.kind
+            case Dot:
+                -- '.field' / method call '.method(args)' / '.0' tuple index
+                if cur + 1 >= lists.len(tokens)
+                    return some(PostfixOut { expr_id: current, next_cursor: cur })
+                end
+                const field_tok = lists.get(tokens, cur + 1)
+                match field_tok.kind
+                case Ident(name):
+                    -- Own the token payload before parsing arguments allocates
+                    -- more expressions and can release the borrowed token.
+                    const m_name = name + ""
+                    -- Check for method call with args: .println("...")
+                    if cur + 2 < lists.len(tokens)
+                        const after_field = lists.get(tokens, cur + 2)
+                        match after_field.kind
+                        case LParen:
+                            if lists.get(pool.kind_tags, current) == 4
+                                const receiver = lists.get(pool.str_vals, current)
+                                match exprs.parse_call(tokens, cur + 1, pool, receiver + "." + m_name, t.span)
+                                case some(call_out):
+                                    current = call_out.expr_id
+                                    cur = call_out.next_cursor
+                                case none:
+                                    return none
+                                end
+                            else
+                                const next_id = exprs.alloc_expr_raw(pool, 0, -1, -1, "method_receiver")
+                                current = next_id
+                                cur = cur + 3
+                            end
+                        case else:
+                            const next_id = exprs.alloc_expr(pool, node.ExprKind.FieldAccess(
+                                object_id: current,
+                                field: m_name
+                            ), t.span)
+                            current = next_id
+                            cur = cur + 2
+                        end
+                    else
+                        const next_id = exprs.alloc_expr(pool, node.ExprKind.FieldAccess(
+                            object_id: current,
+                            field: m_name
+                        ), t.span)
+                        current = next_id
+                        cur = cur + 2
+                    end
+                case IntLit(raw):
+                    const next_id = exprs.alloc_expr(pool, node.ExprKind.FieldAccess(
+                        object_id: current,
+                        field: raw
+                    ), t.span)
+                    current = next_id
+                    cur = cur + 2
+                case else:
+                    return some(PostfixOut { expr_id: current, next_cursor: cur })
+                end
+            case LBracket:
+                -- '[expr]' index
+                match exprs.parse_primary(tokens, cur + 1, pool)
+                case none:
+                    return some(PostfixOut { expr_id: current, next_cursor: cur })
+                case some(idx_out):
+                    const rb = lists.get(tokens, idx_out.next_cursor)
+                    match rb.kind
+                    case RBracket:
+                        const next_id = exprs.alloc_expr(pool, node.ExprKind.IndexAccess(
+                            object_id: current,
+                            index_id: idx_out.expr_id
+                        ), t.span)
+                        current = next_id
+                        cur = idx_out.next_cursor + 1
+                    case else:
+                        return some(PostfixOut { expr_id: current, next_cursor: cur })
+                    end
+                end
+            case else:
+                return some(PostfixOut { expr_id: current, next_cursor: cur })
+            end
+        end
+        return some(PostfixOut { expr_id: current, next_cursor: cur })
+    end
+end
+
+public parse_is_check(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[PostfixOut]
+    match exprs.parse_primary(tokens, cursor, pool)
+    case none:
+        return none
+    case some(base):
+        if base.next_cursor + 1 >= lists.len(tokens)
+            return some(PostfixOut { expr_id: base.expr_id, next_cursor: base.next_cursor })
+        end
+        const is_tok = lists.get(tokens, base.next_cursor)
+        match is_tok.kind
+        case Is:
+            const type_tok = lists.get(tokens, base.next_cursor + 1)
+            match type_tok.kind
+            case Ident(name):
+                const next_id = exprs.alloc_expr(pool, node.ExprKind.IsCheck(
+                    value_id: base.expr_id,
+                    type_name: name
+                ), is_tok.span)
+                return some(PostfixOut { expr_id: next_id, next_cursor: base.next_cursor + 2 })
+            case else:
+                return some(PostfixOut { expr_id: base.expr_id, next_cursor: base.next_cursor })
+            end
+        case else:
+            return some(PostfixOut { expr_id: base.expr_id, next_cursor: base.next_cursor })
+        end
+    end
+end

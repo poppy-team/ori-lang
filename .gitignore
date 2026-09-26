@@ -63,3 +63,4 @@ examples/embed/*.dylib
 examples/embed/*.o
 # Third-party study references (Nim clone etc.) — never committed
 _references/
+/runtime/bin/ori-bridge-server

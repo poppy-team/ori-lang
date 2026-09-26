@@ -1,0 +1,102 @@
+module selfhost.compiler.frontend.diag.sink
+
+import ori.list as lists
+
+public enum Severity
+    Error
+    Warning
+    Note
+end
+
+public struct DiagnosticLabel
+    file: string
+    line: int
+    col: int
+    span_text: string
+    message: string
+end
+
+public struct Diagnostic
+    code: string
+    severity: Severity
+    message: string
+    labels: list[DiagnosticLabel]
+    help_text: string
+end
+
+public struct DiagnosticSink
+    codes: list[string]
+    sev_flags: list[int]
+    messages: list[string]
+    help_texts: list[string]
+end
+
+public new_sink() -> DiagnosticSink
+    const empty_c: list[string] = []
+    const empty_s: list[int] = []
+    const empty_m: list[string] = []
+    const empty_h: list[string] = []
+    return DiagnosticSink {
+        codes: empty_c,
+        sev_flags: empty_s,
+        messages: empty_m,
+        help_texts: empty_h
+    }
+end
+
+public emit_error(sink: DiagnosticSink, code: string, message: string, help_text: string)
+    lists.push(sink.codes, code)
+    lists.push(sink.sev_flags, 0) -- 0 = Error
+    lists.push(sink.messages, message)
+    lists.push(sink.help_texts, help_text)
+end
+
+public emit_warning(sink: DiagnosticSink, code: string, message: string, help_text: string)
+    lists.push(sink.codes, code)
+    lists.push(sink.sev_flags, 1) -- 1 = Warning
+    lists.push(sink.messages, message)
+    lists.push(sink.help_texts, help_text)
+end
+
+public error_count(sink: DiagnosticSink) -> int
+    var count = 0
+    var i = 0
+    const total = lists.len(sink.sev_flags)
+    while i < total
+        if lists.get(sink.sev_flags, i) == 0
+            count = count + 1
+        end
+        i = i + 1
+    end
+    return count
+end
+
+public warning_count(sink: DiagnosticSink) -> int
+    var count = 0
+    var i = 0
+    const total = lists.len(sink.sev_flags)
+    while i < total
+        if lists.get(sink.sev_flags, i) == 1
+            count = count + 1
+        end
+        i = i + 1
+    end
+    return count
+end
+
+public total_count(sink: DiagnosticSink) -> int
+    return lists.len(sink.codes)
+end
+
+public has_errors(sink: DiagnosticSink) -> bool
+    return error_count(sink) > 0
+end
+
+public diagnostic_message_at(sink: DiagnosticSink, idx: int) -> string
+    if idx < 0 or idx >= lists.len(sink.codes)
+        return ""
+    end
+    const code = lists.get(sink.codes, idx)
+    const msg = lists.get(sink.messages, idx)
+    return f"{code}: {msg}"
+end

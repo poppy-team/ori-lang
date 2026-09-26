@@ -1,0 +1,48 @@
+module selfhost.compiler.frontend.source
+
+import ori.fs as fs
+import ori.list as lists
+
+public newtype FileId = int
+
+public alias SourceResult = result[SourceFile, string]
+
+public struct SourceFile
+    id: FileId
+    path: string
+    content: string
+end
+
+public newtype ModuleName = string
+
+public struct SourceGraph
+    files: list[SourceFile]
+end
+
+public empty_graph() -> SourceGraph
+    const empty_files: list[SourceFile] = []
+    return SourceGraph {
+        files: empty_files
+    }
+end
+
+public add_source_file(graph: SourceGraph, file: SourceFile)
+    lists.push(graph.files, file)
+end
+
+public read_source(id: FileId, path: string) -> SourceResult
+    match fs.read_text(path)
+    case ok(content):
+        return ok(SourceFile {
+            id: id,
+            path: path,
+            content: content
+        })
+    case err(e):
+        return err(f"source.io_error: failed to read {path}: {e}")
+    end
+end
+
+public file_count(graph: SourceGraph) -> int
+    return lists.len(graph.files)
+end

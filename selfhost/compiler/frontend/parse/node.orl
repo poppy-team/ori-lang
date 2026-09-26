@@ -1,0 +1,201 @@
+module selfhost.compiler.frontend.parse.node
+
+import selfhost.compiler.frontend.lex.token as tok
+
+public newtype NodeId = int
+
+public struct Name
+    text: string
+    span: tok.Span
+end
+
+public enum UnaryOpKind
+    Not
+    Neg
+    BitNot
+    Try
+    Await
+end
+
+public enum BinaryOpKind
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+    And
+    Or
+    Band
+    Bor
+    Bxor
+    Shl
+    Shr
+    Pipe
+    Range
+end
+
+public enum LiteralKind
+    Int(raw: string)
+    Float(raw: string)
+    Bool(val: bool)
+    Str(val: string)
+    NoneLit
+end
+
+public enum ExprKind
+    Lit(lit: LiteralKind)
+    Ident(name: string)
+    Unary(op: UnaryOpKind, operand_id: int)
+    Binary(op: BinaryOpKind, left_id: int, right_id: int)
+    Call(callee: string, arg_ids: list[int])
+    MethodCall(receiver_id: int, method: string, arg_ids: list[int])
+    FieldAccess(object_id: int, field: string)
+    IndexAccess(object_id: int, index_id: int)
+    IfExpr(cond_id: int, then_id: int, else_id: int)
+    BlockExpr(stmt_ids: list[int], result_id: int)
+    IsCheck(value_id: int, type_name: string)
+    RangeExpr(start_id: int, end_id: int)
+    StructUpdate(base_id: int, field_names: list[string], field_expr_ids: list[int])
+end
+
+public struct ExprNode
+    id: NodeId
+    kind: ExprKind
+    span: tok.Span
+end
+
+public enum PatternKind
+    Wildcard
+    Bind(name: string)
+    Literal(lit: LiteralKind)
+    Variant(type_name: string, variant: string, sub_pat_ids: list[int])
+    Tuple(sub_pat_ids: list[int])
+    Or(left_id: int, right_id: int)
+end
+
+public struct PatternNode
+    id: NodeId
+    kind: PatternKind
+    span: tok.Span
+end
+
+public enum StmtKind
+    Const(name: Name, ty_annot: string, expr_id: int)
+    Var(name: Name, ty_annot: string, expr_id: int)
+    Assign(target_name: string, expr_id: int)
+    Return(expr_id: int)
+    Expr(expr_id: int)
+    If(cond_id: int, then_stmt_ids: list[int], else_stmt_ids: list[int])
+    While(cond_id: int, body_stmt_ids: list[int])
+    ForIn(var_name: string, iterable_id: int, body_stmt_ids: list[int])
+    Match(scrutinee_id: int, arm_pat_ids: list[int], arm_stmt_ids: list[int])
+end
+
+public struct StmtNode
+    id: NodeId
+    kind: StmtKind
+    span: tok.Span
+end
+
+public enum TyKind
+    Named(name: string)
+    Primitive(name: string)
+    ListOf(elem_name: string)
+    OptionalOf(elem_name: string)
+    ResultOf(ok_name: string, err_name: string)
+    FuncOf(param_names: list[string], ret_name: string)
+    Generic(base_name: string, param_names: list[string])
+end
+
+public struct TyNode
+    id: NodeId
+    kind: TyKind
+    span: tok.Span
+end
+
+public struct ParamNode
+    name: Name
+    ty: string
+end
+
+public struct FuncNode
+    id: NodeId
+    name: Name
+    params: list[ParamNode]
+    ret_ty: string
+    body_stmt_ids: list[int]
+    span: tok.Span
+end
+
+public struct FieldNode
+    name: Name
+    ty: string
+end
+
+public struct StructNode
+    id: NodeId
+    name: Name
+    fields: list[FieldNode]
+    span: tok.Span
+end
+
+public struct VariantNode
+    name: Name
+    fields: list[FieldNode]
+end
+
+public struct EnumNode
+    id: NodeId
+    name: Name
+    variants: list[VariantNode]
+    span: tok.Span
+end
+
+public struct TraitMethodNode
+    name: Name
+    params: list[ParamNode]
+    ret_ty: string
+    has_default_body: bool
+end
+
+public struct TraitNode
+    id: NodeId
+    name: Name
+    methods: list[TraitMethodNode]
+    span: tok.Span
+end
+
+public struct ApplyNode
+    id: NodeId
+    target_type: string
+    trait_names: list[string]
+    method_ids: list[int]
+    span: tok.Span
+end
+
+public struct ImportNode
+    module_path: string
+    alias_name: string
+    span: tok.Span
+end
+
+public enum ItemNode
+    Func(decl: FuncNode)
+    Struct(decl: StructNode)
+    Enum(decl: EnumNode)
+    Trait(decl: TraitNode)
+    Apply(decl: ApplyNode)
+    Import(decl: ImportNode)
+end
+
+public struct ModuleNode
+    name: string
+    imports: list[ImportNode]
+    items: list[ItemNode]
+end

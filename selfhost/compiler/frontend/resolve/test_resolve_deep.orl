@@ -1,0 +1,37 @@
+module selfhost.compiler.frontend.resolve.test_resolve_deep
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.resolve.graph as gr
+import selfhost.compiler.frontend.resolve.imports as imp
+import selfhost.compiler.frontend.resolve.visibility as vis
+
+main()
+    -- 1. Test imports alias mapping
+    const mapping = imp.new_mapping()
+    imp.register_import(mapping, "io", "ori.io")
+    match imp.resolve_alias(mapping, "io")
+    case some(path):
+        io.println(f"ALIAS_RESOLVE_OK: {path}")
+    case none:
+        io.println("ALIAS_RESOLVE_FAIL")
+    end
+
+    -- 2. Test module path translation
+    const file_path = imp.module_to_file_path("src", "app.models.user")
+    io.println(f"FILE_PATH_OK: {file_path}")
+
+    -- 3. Test graph cycle detection
+    const graph = gr.new_graph()
+    gr.register_edge(graph, "app.main", "app.helper")
+    gr.register_edge(graph, "app.helper", "app.main")
+    io.println(f"GRAPH_CYCLE_DETECTED: {gr.has_cycle(graph)}")
+
+    -- 4. Test visibility exposure
+    const all_names: list[string] = ["public_fn", "private_fn"]
+    const vis_flags: list[int] = [1, 0]
+    const exposed = vis.exposed_names(all_names, vis_flags)
+    io.println(f"EXPOSED_COUNT: {lists.len(exposed)}")
+
+    io.println("ONDA2_RESOLVE_COMPLETE_SUCCESS")
+end

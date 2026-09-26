@@ -1,0 +1,96 @@
+module selfhost.compiler.frontend.diag.source_map
+
+import ori.list as lists
+import ori.string as su
+
+public struct SourceFile
+    path: string
+    content: string
+    line_starts: list[int]
+end
+
+public new_source_file(path: string, content: string) -> SourceFile
+    const starts: list[int] = []
+    lists.push(starts, 0)
+    var i = 0
+    const total = su.len(content)
+    -- Track byte offsets against char slicing
+    while i < total
+        const ch = su.slice(content, i, i + 1)
+        if ch == "\n"
+            lists.push(starts, i + 1)
+        end
+        i = i + 1
+    end
+    return SourceFile {
+        path: path,
+        content: content,
+        line_starts: starts
+    }
+end
+
+public struct LineCol
+    line: int
+    col: int
+end
+
+public offset_to_line_col(file: SourceFile, byte_offset: int) -> LineCol
+    var line = 0
+    var i = 0
+    const total = lists.len(file.line_starts)
+    while i < total
+        const line_start = lists.get(file.line_starts, i)
+        if line_start > byte_offset
+            return LineCol { line: i, col: byte_offset - lists.get(file.line_starts, i - 1) }
+        end
+        i = i + 1
+    end
+    return LineCol { line: total, col: byte_offset - lists.get(file.line_starts, total - 1) }
+end
+
+public render_error_snippet(file: SourceFile, line_idx: int, col: int, span_len: int) -> string
+    const line = line_content(file, line_idx)
+    if line == ""
+        return ""
+    end
+    const carets = repeat_caret(span_len)
+    return f"{line}\n{spaces(col)}{carets}"
+end
+
+spaces(n: int) -> string
+    var s = ""
+    var i = 0
+    while i < n
+        s = s + " "
+        i = i + 1
+    end
+    return s
+end
+
+repeat_caret(n: int) -> string
+    if n <= 0
+        return "^"
+    end
+    var s = ""
+    var i = 0
+    while i < n
+        s = s + "^"
+        i = i + 1
+    end
+    return s
+end
+
+line_content(file: SourceFile, line_idx: int) -> string
+    const starts = file.line_starts
+    if line_idx < 1 or line_idx > lists.len(starts)
+        return ""
+    end
+    const start_idx = lists.get(starts, line_idx - 1)
+    const content_len = su.len(file.content)
+    var end_idx = content_len
+    if line_idx < lists.len(starts)
+        end_idx = lists.get(starts, line_idx) - 1
+    end
+    const raw = su.slice(file.content, start_idx, end_idx)
+    return su.trim_end(raw)
+end

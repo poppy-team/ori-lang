@@ -1,0 +1,59 @@
+module selfhost.compiler.hir.lower_stmt
+
+import ori.list as lists
+
+public enum LinearStmtKind
+    AssignConst
+    AssignBinary
+    ConditionalBranch
+    Jump
+    CallNative
+    ReturnVal
+end
+
+public struct LinearStmt
+    kind: LinearStmtKind
+    target_var: string
+    arg1: string
+    arg2: string
+end
+
+public struct BasicBlock
+    label: string
+    stmt_kinds: list[int]
+    stmt_targets: list[string]
+    stmt_arg1s: list[string]
+    stmt_arg2s: list[string]
+end
+
+public new_block(label: string) -> BasicBlock
+    const empty_k: list[int] = []
+    const empty_t: list[string] = []
+    const empty_a1: list[string] = []
+    const empty_a2: list[string] = []
+    return BasicBlock {
+        label: label,
+        stmt_kinds: empty_k,
+        stmt_targets: empty_t,
+        stmt_arg1s: empty_a1,
+        stmt_arg2s: empty_a2
+    }
+end
+
+public emit_assign_const(bb: BasicBlock, target: string, val: int)
+    lists.push(bb.stmt_kinds, 1) -- AssignConst
+    lists.push(bb.stmt_targets, target)
+    lists.push(bb.stmt_arg1s, f"{val}")
+    lists.push(bb.stmt_arg2s, "")
+end
+
+public emit_return(bb: BasicBlock, var_name: string)
+    lists.push(bb.stmt_kinds, 6) -- ReturnVal
+    lists.push(bb.stmt_targets, "")
+    lists.push(bb.stmt_arg1s, var_name)
+    lists.push(bb.stmt_arg2s, "")
+end
+
+public block_stmt_count(bb: BasicBlock) -> int
+    return lists.len(bb.stmt_kinds)
+end

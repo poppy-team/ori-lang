@@ -1,0 +1,11 @@
+module selfhost.compiler.tools.fmt
+
+import ori.string as su
+
+public normalize_whitespace(content: string) -> string
+    return su.trim(content)
+end
+
+public format_source(content: string) -> string
+    return normalize_whitespace(content) + "\n"
+end

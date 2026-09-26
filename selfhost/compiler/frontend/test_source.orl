@@ -1,0 +1,24 @@
+module selfhost.compiler.frontend.test_source
+
+import ori.io as io
+import selfhost.compiler.frontend.source as src
+
+main()
+    const graph = src.empty_graph()
+    io.println(f"SOURCE_EMPTY_COUNT: {src.file_count(graph)}")
+
+    match src.read_source(src.FileId(1), "selfhost/probes/lexer_primitives.orl")
+    case ok(file):
+        src.add_source_file(graph, file)
+        io.println(f"SOURCE_OK: count={src.file_count(graph)} path={file.path}")
+    case err(e):
+        io.println(f"SOURCE_FAIL: {e}")
+    end
+
+    match src.read_source(src.FileId(2), "nonexistent/missing.orl")
+    case ok(_):
+        io.println("SOURCE_FAIL: expected error for missing file")
+    case err(e):
+        io.println(f"SOURCE_NEGATIVE_OK: {e}")
+    end
+end

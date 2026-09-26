@@ -1,9 +1,7 @@
 module app.main
 
-imports
-    app.greeter = greeter
-    ori.io = io
-end
+import app.greeter as greeter
+import ori.io as io
 
 main()
     io.println(greeter.hello("Ori"))

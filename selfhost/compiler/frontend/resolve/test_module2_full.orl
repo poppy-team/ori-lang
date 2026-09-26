@@ -1,0 +1,58 @@
+module selfhost.compiler.frontend.resolve.test_module2_full
+
+import ori.io as io
+import selfhost.compiler.frontend.resolve.cycle_diag as cd
+import selfhost.compiler.frontend.resolve.graph as gr
+import selfhost.compiler.frontend.resolve.loader as ld
+import selfhost.compiler.frontend.resolve.nested_scopes as ns
+import selfhost.compiler.frontend.resolve.qualified as qp
+
+main()
+    -- 1. Test nested scopes and lexical shadowing
+    const tree = ns.new_tree()
+    ns.define_local(tree, "x", "int")
+    io.println(f"SCOPE_DEPTH_0: {ns.current_depth(tree)}")
+
+    ns.enter_scope(tree)
+    ns.define_local(tree, "x", "string") -- Shadows outer x
+    io.println(f"SCOPE_DEPTH_1: {ns.current_depth(tree)}")
+
+    match ns.lookup_innermost(tree, "x")
+    case some(ty):
+        io.println(f"SHADOW_LOOKUP_OK: x={ty}")
+    case none:
+        io.println("SHADOW_LOOKUP_FAIL")
+    end
+
+    ns.exit_scope(tree)
+    match ns.lookup_innermost(tree, "x")
+    case some(ty):
+        io.println(f"OUTER_LOOKUP_RESTORED: x={ty}")
+    case none:
+        io.println("OUTER_LOOKUP_FAIL")
+    end
+
+    -- 2. Test qualified path parsing
+    const qpath = qp.parse_qualified("ori.net.http.get")
+    io.println(f"QUALIFIED_SEGS: {qp.segment_count(qpath)}")
+    io.println(f"BASE_MODULE: {qp.base_module_name(qpath)}")
+    io.println(f"FINAL_ITEM: {qp.final_item_name(qpath)}")
+
+    -- 3. Test cycle diagnostic emission
+    const graph = gr.new_graph()
+    gr.register_edge(graph, "modA", "modB")
+    gr.register_edge(graph, "modB", "modA")
+    const diag = cd.check_and_format_cycle(graph)
+    io.println(f"HAS_CYCLE_DIAG: {diag.has_error}")
+    io.println(f"DIAG_MSG: {diag.formatted_message}")
+
+    -- 4. Test physical loader negative case
+    match ld.load_module_text("nonexistent.pkg.missing", "/tmp")
+    case ok(_):
+        io.println("LOADER_FAIL: expected error")
+    case err(msg):
+        io.println(f"LOADER_NEGATIVE_OK: {msg}")
+    end
+
+    io.println("MODULE2_ALL_TESTS_SUCCESS")
+end

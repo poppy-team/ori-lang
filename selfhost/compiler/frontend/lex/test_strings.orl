@@ -1,0 +1,29 @@
+module selfhost.compiler.frontend.lex.test_strings
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+
+main()
+    -- 1. Plain double-quoted string with escapes
+    const s1 = lex.tokenize_all("\"hello\\nworld\"")
+    io.println(f"STR_PLAIN_TOKENS: {lists.len(s1)}")
+
+    -- 2. f-string
+    const s2 = lex.tokenize_all("f\"user={name}\"")
+    io.println(f"FSTR_TOKENS: {lists.len(s2)}")
+
+    -- 3. Escaped braces in f-string
+    const s3 = lex.tokenize_all("f\"brace: {{x}}\"")
+    io.println(f"FSTR_ESCAPED_TOKENS: {lists.len(s3)}")
+
+    -- 4. Bytes literal
+    const s4 = lex.tokenize_all("b\"hello\\x00\"")
+    io.println(f"BYTES_TOKENS: {lists.len(s4)}")
+
+    -- 5. Triple-quoted block
+    const s5 = lex.tokenize_all("\"\"\"\nline1\nline2\n\"\"\"")
+    io.println(f"TRIPLE_TOKENS: {lists.len(s5)}")
+
+    io.println("F1_STRINGS_SUCCESS")
+end

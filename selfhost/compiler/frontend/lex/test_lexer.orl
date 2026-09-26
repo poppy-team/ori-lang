@@ -1,0 +1,21 @@
+module selfhost.compiler.frontend.lex.test_lexer
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+
+main()
+    const tokens = lex.tokenize_all("module app.hello import ori.io as io")
+    io.println(f"LEX_TOKEN_COUNT: {lists.len(tokens)}")
+
+    const nums = lex.tokenize_all("const answer: int = 42")
+    io.println(f"LEX_NUMBER_COUNT: {lists.len(nums)}")
+
+    const arrows = lex.tokenize_all("f(x: int) -> int")
+    io.println(f"LEX_ARROW_COUNT: {lists.len(arrows)}")
+
+    const empty = lex.tokenize_all("")
+    io.println(f"LEX_EMPTY_COUNT: {lists.len(empty)}")
+
+    io.println("LEX_ALL_PASSED")
+end

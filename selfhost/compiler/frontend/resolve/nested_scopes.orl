@@ -1,0 +1,60 @@
+module selfhost.compiler.frontend.resolve.nested_scopes
+
+import ori.list as lists
+
+public newtype ScopeId = int
+
+public struct ScopeTree
+    frame_start_indices: list[int]
+    all_names: list[string]
+    all_types: list[string]
+end
+
+public new_tree() -> ScopeTree
+    const empty_starts: list[int] = []
+    const empty_names: list[string] = []
+    const empty_types: list[string] = []
+    const tree = ScopeTree {
+        frame_start_indices: empty_starts,
+        all_names: empty_names,
+        all_types: empty_types
+    }
+    enter_scope(tree)
+    return tree
+end
+
+public enter_scope(tree: ScopeTree)
+    const start = lists.len(tree.all_names)
+    lists.push(tree.frame_start_indices, start)
+end
+
+public exit_scope(tree: ScopeTree)
+    if lists.len(tree.frame_start_indices) > 1
+        const start = lists.pop(tree.frame_start_indices)
+        while lists.len(tree.all_names) > start
+            lists.pop(tree.all_names)
+            lists.pop(tree.all_types)
+        end
+    end
+end
+
+public define_local(tree: ScopeTree, name: string, ty: string)
+    lists.push(tree.all_names, name)
+    lists.push(tree.all_types, ty)
+end
+
+public lookup_innermost(tree: ScopeTree, name: string) -> optional[string]
+    -- Scan backwards from latest binding to global scope (innermost shadows outer)
+    var i = lists.len(tree.all_names) - 1
+    while i >= 0
+        if lists.get(tree.all_names, i) == name
+            return some(lists.get(tree.all_types, i))
+        end
+        i = i - 1
+    end
+    return none
+end
+
+public current_depth(tree: ScopeTree) -> int
+    return lists.len(tree.frame_start_indices) - 1
+end

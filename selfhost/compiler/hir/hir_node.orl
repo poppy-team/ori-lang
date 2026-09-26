@@ -1,0 +1,72 @@
+module selfhost.compiler.hir.hir_node
+
+public newtype HirId = int
+
+public enum HirStmtTag
+    LetInt
+    ReturnInt
+    CallStmt
+end
+
+public struct HirFuncBody
+    stmt_tags: list[int]
+    stmt_names: list[string]
+    const_values: list[int]
+end
+
+public new_hir_func_body() -> HirFuncBody
+    const empty_tags: list[int] = []
+    const empty_names: list[string] = []
+    const empty_consts: list[int] = []
+    return HirFuncBody {
+        stmt_tags: empty_tags,
+        stmt_names: empty_names,
+        const_values: empty_consts
+    }
+end
+
+public struct HirFunc
+    name: string
+    param_names: list[string]
+    param_types: list[string]
+    ret_ty: string
+    stmt_kinds: list[string]
+    stmt_names: list[string]
+end
+
+public new_hir_func(name: string, ret_ty: string) -> HirFunc
+    const p_names: list[string] = []
+    const p_types: list[string] = []
+    const s_kinds: list[string] = []
+    const s_names: list[string] = []
+    return HirFunc {
+        name: name,
+        param_names: p_names,
+        param_types: p_types,
+        ret_ty: ret_ty,
+        stmt_kinds: s_kinds,
+        stmt_names: s_names
+    }
+end
+
+public struct HirModule
+    ns_name: string
+    func_names: list[string]
+    func_ret_tys: list[string]
+    func_param_jsons: list[string]
+    func_body_jsons: list[string]
+end
+
+public new_hir_module(name: string) -> HirModule
+    const f_names: list[string] = []
+    const f_rets: list[string] = []
+    const f_params: list[string] = []
+    const f_bodies: list[string] = []
+    return HirModule {
+        ns_name: name,
+        func_names: f_names,
+        func_ret_tys: f_rets,
+        func_param_jsons: f_params,
+        func_body_jsons: f_bodies
+    }
+end

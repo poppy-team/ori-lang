@@ -1,0 +1,52 @@
+module selfhost.compiler.frontend.resolve.scope
+
+import ori.list as lists
+
+public newtype SymbolId = int
+
+public enum SymbolKind
+    Variable
+    Function
+    TypeDecl
+    ModuleAlias
+end
+
+public struct Scope
+    names: list[string]
+    kinds: list[int]
+    ids: list[int]
+end
+
+public new_scope() -> Scope
+    const empty_names: list[string] = []
+    const empty_kinds: list[int] = []
+    const empty_ids: list[int] = []
+    return Scope {
+        names: empty_names,
+        kinds: empty_kinds,
+        ids: empty_ids
+    }
+end
+
+public define_symbol(scope: Scope, name: string, kind: int, id: int)
+    lists.push(scope.names, name)
+    lists.push(scope.kinds, kind)
+    lists.push(scope.ids, id)
+end
+
+public lookup(scope: Scope, name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(scope.names)
+    while i < count
+        const cur_name = lists.get(scope.names, i)
+        if cur_name == name
+            return some(i)
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public symbol_count(scope: Scope) -> int
+    return lists.len(scope.names)
+end

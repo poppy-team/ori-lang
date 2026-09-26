@@ -1,0 +1,61 @@
+module selfhost.compiler.frontend.resolve.test_def_map_full
+
+import ori.io as io
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.resolve.def_map as dm
+
+main()
+    const dmap = dm.new_def_map()
+    const sink = ds.new_sink()
+
+    -- Pass 1: collect two Structs, one Enum, two Funcs (with visibility flags)
+    const fnames: list[string] = ["main", "helper"]
+    const fpub: list[int] = [1, 1]
+    const snames: list[string] = ["Point", "Pixel"]
+    const spub: list[int] = [1, 0]
+    const enames: list[string] = ["Direction"]
+    const epub: list[int] = [1]
+
+    dm.pass1_collect_declarations_pub(dmap, sink, "app.main", fnames, fpub, snames, spub, enames, epub)
+    const def_total = dm.total_defs(dmap)
+    io.println(f"PASS1_DEFS: {def_total}")
+
+    -- Pass 2: resolve real references incl. one unknown name
+    const refs: list[string] = ["main", "Point", "helper", "mystery_fn"]
+    dm.pass2_resolve_references(dmap, sink, refs)
+
+    const err_total = ds.error_count(sink)
+    io.println(f"SINK_ERRORS: {err_total}")
+    if ds.has_errors(sink)
+        const first_msg = ds.diagnostic_message_at(sink, 0)
+        io.println(f"FIRST_ERROR: {first_msg}")
+    end
+
+    -- 3. Duplicate registration emits name.duplicate_definition
+    const dup_names: list[string] = ["Point"]
+    const dup_pub: list[int] = [1]
+    const empty_list: list[string] = []
+    const empty_flags: list[int] = []
+    dm.pass1_collect_declarations_pub(dmap, sink, "app.main", empty_list, empty_flags, dup_names, dup_pub, empty_list, empty_flags)
+    io.println(f"DUP_ERRORS: {ds.error_count(sink)}")
+
+    -- 4. Visibility: Point is public, Pixel is private
+    match dm.is_def_public(dmap, "Point")
+    case some(flag):
+        io.println(f"POINT_IS_PUBLIC: {flag}")
+    case none:
+        io.println("POINT_NOT_FOUND")
+    end
+    match dm.is_def_public(dmap, "Pixel")
+    case some(flag):
+        io.println(f"PIXEL_IS_PUBLIC: {flag}")
+    case none:
+        io.println("PIXEL_NOT_FOUND")
+    end
+
+    -- 5. Cross-module access check: private Pixel access must error
+    dm.check_cross_module_access(dmap, sink, "Pixel")
+    io.println(f"PRIV_ERRORS: {ds.error_count(sink)}")
+
+    io.println("F_RESOLVE_SUITE_SUCCESS")
+end

@@ -1,0 +1,112 @@
+module selfhost.compiler.frontend.lex.number_scan
+
+import ori.bytes as bs
+
+public struct NumScanResult
+    raw: string
+    is_float: bool
+    end_cursor: int
+end
+
+is_hex_digit(b: int) -> bool
+    return (b >= 48 and b <= 57) or (b >= 65 and b <= 70) or (b >= 97 and b <= 102)
+end
+
+is_oct_digit(b: int) -> bool
+    return b >= 48 and b <= 55
+end
+
+is_bin_digit(b: int) -> bool
+    return b == 48 or b == 49
+end
+
+public scan_number_full(data: bytes, start: int, len: int) -> NumScanResult
+    var cur = start
+    var is_float = false
+
+    -- Check prefix 0x, 0b, 0o
+    if cur + 1 < len
+        const b0 = int(bs.get(data, cur))
+        const b1 = int(bs.get(data, cur + 1))
+        if b0 == 48 -- '0'
+            if b1 == 120 or b1 == 88 -- 'x' or 'X'
+                cur = cur + 2
+                while cur < len and (is_hex_digit(int(bs.get(data, cur))) or int(bs.get(data, cur)) == 95)
+                    cur = cur + 1
+                end
+                cur = skip_suffix(data, cur, len)
+                return make_num_res(data, start, cur, false)
+            elif b1 == 98 or b1 == 66 -- 'b' or 'B'
+                cur = cur + 2
+                while cur < len and (is_bin_digit(int(bs.get(data, cur))) or int(bs.get(data, cur)) == 95)
+                    cur = cur + 1
+                end
+                cur = skip_suffix(data, cur, len)
+                return make_num_res(data, start, cur, false)
+            elif b1 == 111 or b1 == 79 -- 'o' or 'O'
+                cur = cur + 2
+                while cur < len and (is_oct_digit(int(bs.get(data, cur))) or int(bs.get(data, cur)) == 95)
+                    cur = cur + 1
+                end
+                cur = skip_suffix(data, cur, len)
+                return make_num_res(data, start, cur, false)
+            end
+        end
+    end
+
+    -- Decimal integer or float
+    while cur < len and ((int(bs.get(data, cur)) >= 48 and int(bs.get(data, cur)) <= 57) or int(bs.get(data, cur)) == 95)
+        cur = cur + 1
+    end
+
+    -- Check fractional point (must be followed by a digit to not collide with '..' range)
+    if cur + 1 < len and int(bs.get(data, cur)) == 46 and (int(bs.get(data, cur + 1)) >= 48 and int(bs.get(data, cur + 1)) <= 57)
+        is_float = true
+        cur = cur + 1 -- consume '.'
+        while cur < len and ((int(bs.get(data, cur)) >= 48 and int(bs.get(data, cur)) <= 57) or int(bs.get(data, cur)) == 95)
+            cur = cur + 1
+        end
+    end
+
+    -- Check scientific exponent e/E with optional sign
+    if cur < len and (int(bs.get(data, cur)) == 101 or int(bs.get(data, cur)) == 69) -- 'e' or 'E'
+        const next_pos = cur + 1
+        var exp_start = next_pos
+        if next_pos < len and (int(bs.get(data, next_pos)) == 43 or int(bs.get(data, next_pos)) == 45)
+            exp_start = next_pos + 1
+        end
+        if exp_start < len and (int(bs.get(data, exp_start)) >= 48 and int(bs.get(data, exp_start)) <= 57)
+            is_float = true
+            cur = exp_start + 1
+            while cur < len and ((int(bs.get(data, cur)) >= 48 and int(bs.get(data, cur)) <= 57) or int(bs.get(data, cur)) == 95)
+                cur = cur + 1
+            end
+        end
+    end
+
+    cur = skip_suffix(data, cur, len)
+    return make_num_res(data, start, cur, is_float)
+end
+
+skip_suffix(data: bytes, cur: int, len: int) -> int
+    var p = cur
+    if p < len
+        const b = int(bs.get(data, p))
+        if b == 105 or b == 117 or b == 102 -- 'i', 'u', 'f'
+            p = p + 1
+            while p < len and ((int(bs.get(data, p)) >= 48 and int(bs.get(data, p)) <= 57) or int(bs.get(data, p)) == 95)
+                p = p + 1
+            end
+        end
+    end
+    return p
+end
+
+make_num_res(data: bytes, start: int, end_idx: int, is_float: bool) -> NumScanResult
+    const sub = bs.slice(data, start, end_idx)
+    const raw = match bs.decode_utf8(sub)
+        case ok(s): s
+        case err(_): ""
+        end
+    return NumScanResult { raw: raw, is_float: is_float, end_cursor: end_idx }
+end

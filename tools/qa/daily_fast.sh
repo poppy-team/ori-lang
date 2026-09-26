@@ -38,4 +38,7 @@ cargo test -p ori-driver --test memory_arc --locked -- --quiet
 cargo test -p ori-driver --test security_robustness --locked -- --quiet
 echo "== S8 residual product surface =="
 cargo test -p ori-driver --test concurrency_async compile_runs_lang_res_product_surface_native --locked -- --quiet
+echo "== S9 selfhost native compiler & bridge =="
+cargo test -p ori-bridge-server --locked -- --quiet
+"$repo/tools/qa/test_selfhost_complete.sh"
 echo "daily_fast: OK"

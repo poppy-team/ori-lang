@@ -1,0 +1,85 @@
+module selfhost.compiler.frontend.parse.control_flow
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+
+public struct LoopParseOut
+    kind_tag: int -- 1=While, 2=For, 3=Loop, 4=Repeat
+    next_cursor: int
+end
+
+public parse_loop_header(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[LoopParseOut]
+    if cursor >= lists.len(tokens)
+        return none
+    end
+
+    const t = lists.get(tokens, cursor)
+    match t.kind
+    case While:
+        return some(LoopParseOut { kind_tag: 1, next_cursor: cursor + 1 })
+    case For:
+        return some(LoopParseOut { kind_tag: 2, next_cursor: cursor + 1 })
+    case Loop:
+        return some(LoopParseOut { kind_tag: 3, next_cursor: cursor + 1 })
+    case Repeat:
+        return some(LoopParseOut { kind_tag: 4, next_cursor: cursor + 1 })
+    case else:
+        return none
+    end
+end
+
+public struct MatchArmOut
+    pat_text: string
+    next_cursor: int
+end
+
+public parse_match_arm(tokens: list[tok.Token], cursor: int) -> optional[MatchArmOut]
+    if cursor >= lists.len(tokens)
+        return none
+    end
+
+    const case_tok = lists.get(tokens, cursor)
+    match case_tok.kind
+    case Case:
+        if cursor + 1 >= lists.len(tokens)
+            return none
+        end
+        const pat_tok = lists.get(tokens, cursor + 1)
+        match pat_tok.kind
+        case Ident(name):
+            return some(MatchArmOut { pat_text: name, next_cursor: cursor + 2 })
+        case Else:
+            return some(MatchArmOut { pat_text: "else", next_cursor: cursor + 2 })
+        case else:
+            return none
+        end
+    case else:
+        return none
+    end
+end
+
+public struct UsingOut
+    binding_name: string
+    next_cursor: int
+end
+
+public parse_using(tokens: list[tok.Token], cursor: int) -> optional[UsingOut]
+    if cursor + 1 >= lists.len(tokens)
+        return none
+    end
+
+    const use_tok = lists.get(tokens, cursor)
+    match use_tok.kind
+    case Using:
+        const bind_tok = lists.get(tokens, cursor + 1)
+        match bind_tok.kind
+        case Ident(name):
+            return some(UsingOut { binding_name: name, next_cursor: cursor + 2 })
+        case else:
+            return none
+        end
+    case else:
+        return none
+    end
+end

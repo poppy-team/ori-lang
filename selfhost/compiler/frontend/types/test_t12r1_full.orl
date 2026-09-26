@@ -1,0 +1,51 @@
+module selfhost.compiler.frontend.types.test_t12r1_full
+
+import ori.io as io
+import selfhost.compiler.frontend.resolve.def_arena as da
+import selfhost.compiler.frontend.types.stdlib_broad as sb
+import selfhost.compiler.frontend.types.types_full as tf
+
+main()
+    -- 1. Full type pool: primitives + composite allocation
+    const pool = tf.new_full_pool()
+    io.println(f"PRIMITIVES_COUNT: {tf.total_types(pool)}")
+
+    const list_int = tf.alloc_composite_type(pool, tf.TypeTag.List(elem_id: 1))
+    io.println(f"LIST_INT_ID: {list_int}")
+
+    -- 2. Unification with occurs check: T = list[T] rejected
+    match tf.unify_with_occurs(pool, list_int, 1) -- needle=list_int in haystack=list[int]
+    case ok(_):
+        io.println("OCCURS_CHECK_OK")
+    case err(msg):
+        io.println(f"OCCURS_CYCLE_ERR: {msg}")
+    end
+
+    -- 3. DefArena with 9 DefKinds
+    const arena = da.new_arena()
+    const d1 = da.alloc_def(arena, "Point", "app.Point", da.DefKind.Struct)
+    const d2 = da.alloc_def(arena, "calculate", "app.calculate", da.DefKind.Func)
+    const d3 = da.alloc_def(arena, "Drawable", "app.Drawable", da.DefKind.Trait)
+    io.println(f"DEF_COUNT: {da.def_count(arena)}")
+
+    match da.lookup_by_name(arena, "Point")
+    case some(id):
+        io.println(f"DEF_LOOKUP_OK: {id}")
+    case none:
+        io.println("DEF_LOOKUP_FAIL")
+    end
+
+    -- 4. Broad stdlib catalog
+    const broad = sb.new_broad_catalog()
+    sb.seed_broad_surface(broad)
+    io.println(f"BROAD_CATALOG_COUNT: {sb.broad_count(broad)}")
+
+    match sb.look(broad, "ori.crypto.sha256")
+    case some(shape):
+        io.println(f"CRYPTO_LOOKUP_OK: {shape}")
+    case none:
+        io.println("CRYPTO_LOOKUP_FAIL")
+    end
+
+    io.println("T12R1_SUITE_SUCCESS")
+end

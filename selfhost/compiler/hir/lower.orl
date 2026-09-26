@@ -1,0 +1,48 @@
+module selfhost.compiler.hir.lower
+
+import ori.list as lists
+import selfhost.compiler.frontend.parse.node as node
+import selfhost.compiler.frontend.types.monomorph as mo
+import selfhost.compiler.hir.hir_node as hn
+
+public struct LowerContext
+    module_ir: hn.HirModule
+    mono_table: mo.MonoTable
+end
+
+public new_lower_context(module_name: string) -> LowerContext
+    return LowerContext {
+        module_ir: hn.new_hir_module(module_name),
+        mono_table: mo.new_mono_table()
+    }
+end
+
+public lower_item(ctx: LowerContext, item: node.ItemNode)
+    match item
+    case Func(decl):
+        const body_stub = "{\"Return\":{\"IntLit\":0}}"
+        if decl.ret_ty == "T"
+            const args_int: list[string] = ["int"]
+            const mono_int = mo.intern_instance(ctx.mono_table, decl.name.text, args_int)
+            lists.push(ctx.module_ir.func_names, mono_int)
+            lists.push(ctx.module_ir.func_ret_tys, "int")
+            lists.push(ctx.module_ir.func_body_jsons, body_stub)
+        else
+            lists.push(ctx.module_ir.func_names, decl.name.text)
+            lists.push(ctx.module_ir.func_ret_tys, decl.ret_ty)
+            lists.push(ctx.module_ir.func_body_jsons, body_stub)
+        end
+    case else:
+        -- Structs and enums do not lower to executable functions directly
+    end
+end
+
+public lower_body_statements(ctx: LowerContext, fn_name: string, fn_ret_ty: string, body_json: string)
+    lists.push(ctx.module_ir.func_names, fn_name)
+    lists.push(ctx.module_ir.func_ret_tys, fn_ret_ty)
+    lists.push(ctx.module_ir.func_body_jsons, body_json)
+end
+
+public module_func_count(ctx: LowerContext) -> int
+    return lists.len(ctx.module_ir.func_names)
+end

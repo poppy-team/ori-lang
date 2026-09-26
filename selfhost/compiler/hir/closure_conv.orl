@@ -1,0 +1,28 @@
+module selfhost.compiler.hir.closure_conv
+
+import ori.list as lists
+
+public struct ClosureEnv
+    env_struct_name: string
+    captured_vars: list[string]
+    captured_types: list[string]
+end
+
+public new_env(struct_name: string) -> ClosureEnv
+    const empty_v: list[string] = []
+    const empty_t: list[string] = []
+    return ClosureEnv {
+        env_struct_name: struct_name,
+        captured_vars: empty_v,
+        captured_types: empty_t
+    }
+end
+
+public capture_var(env: ClosureEnv, var_name: string, ty: string)
+    lists.push(env.captured_vars, var_name)
+    lists.push(env.captured_types, ty)
+end
+
+public capture_count(env: ClosureEnv) -> int
+    return lists.len(env.captured_vars)
+end

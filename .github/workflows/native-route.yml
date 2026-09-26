@@ -50,6 +50,10 @@ jobs:
           rustc -Vv
           cargo -V
 
+      - name: Test experimental bridge protocol and invalid IR
+        if: matrix.name == 'linux-gnu'
+        run: cargo test -p ori-bridge-server --test bridge_tests --test compile_tests --test invalid_ir --locked
+
       - name: Configure Windows GNU linker
         if: matrix.name == 'windows-gnu'
         shell: pwsh
@@ -77,6 +81,9 @@ jobs:
 
       - name: Test runtime
         run: cargo test -p ori-runtime --locked -- --test-threads=1
+
+      - name: Test managed list read ownership
+        run: cargo test -p ori-driver --test memory_arc compile_runs_native_list_get_keeps_removed_struct_alive --locked
 
       - name: Test native driver integration
         run: cargo test -p ori-driver --test multifile_imports --locked
@@ -331,3 +338,23 @@ jobs:
       - name: Smoke — package without Rust
         run: |
           sh tools/smoke_no_rust.sh --package-root ~/ori-smoke
+
+  selfhost-bootstrap:
+    name: selfhost-bootstrap (experimental)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+      - name: Build reference compiler, runtime, and bridge
+        working-directory: compiler
+        run: cargo build -p ori-driver -p ori-runtime -p ori-bridge-server --locked
+      - name: Stage runtime for native compilation
+        run: sh tools/stage_native_runtime.sh --profile debug --skip-build
+      - name: Verify real Stage 0 → Stage 1 → Stage 2 → Stage 3 and program output
+        env:
+          RUST_BACKTRACE: '1'
+        run: bash tools/qa/test_bootstrap_stages.sh

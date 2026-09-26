@@ -1,0 +1,20 @@
+[package]
+name = "ori-bridge-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+ori-diagnostics = { workspace = true }
+ori-ast = { workspace = true }
+ori-hir = { workspace = true }
+ori-types = { workspace = true }
+ori-codegen = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

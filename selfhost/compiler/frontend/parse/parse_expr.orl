@@ -1,0 +1,476 @@
+module selfhost.compiler.frontend.parse.parse_expr
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+
+public struct ExprPool
+    kind_tags: list[int] -- 1=IntLit, 2=StrLit, 3=BoolLit, 4=Ident, 5=Binary, 6=Call, 7=EmptyList
+    left_ids: list[int]
+    right_ids: list[int]
+    third_ids: list[int] -- else branch of an inline if-expression
+    str_vals: list[string]
+    call_arg_starts: list[int]
+    call_arg_counts: list[int]
+    call_arg_ids: list[int]
+end
+
+public new_pool() -> ExprPool
+    const empty_k: list[int] = []
+    const empty_l: list[int] = []
+    const empty_r: list[int] = []
+    const empty_third: list[int] = []
+    const empty_s: list[string] = []
+    const empty_starts: list[int] = []
+    const empty_counts: list[int] = []
+    const empty_args: list[int] = []
+    return ExprPool {
+        kind_tags: empty_k,
+        left_ids: empty_l,
+        right_ids: empty_r,
+        third_ids: empty_third,
+        str_vals: empty_s,
+        call_arg_starts: empty_starts,
+        call_arg_counts: empty_counts,
+        call_arg_ids: empty_args
+    }
+end
+
+public alloc_expr_raw(pool: ExprPool, kind_tag: int, left: int, right: int, val: string) -> int
+    const id = lists.len(pool.kind_tags)
+    lists.push(pool.kind_tags, kind_tag)
+    lists.push(pool.left_ids, left)
+    lists.push(pool.right_ids, right)
+    lists.push(pool.third_ids, -1)
+    lists.push(pool.str_vals, val)
+    lists.push(pool.call_arg_starts, -1)
+    lists.push(pool.call_arg_counts, 0)
+    return id
+end
+
+public record_call_args(pool: ExprPool, id: int, args: list[int])
+    lists.set(pool.call_arg_starts, id, lists.len(pool.call_arg_ids))
+    lists.set(pool.call_arg_counts, id, lists.len(args))
+    var i = 0
+    while i < lists.len(args)
+        lists.push(pool.call_arg_ids, lists.get(args, i))
+        i = i + 1
+    end
+end
+
+-- Backward compatible alloc_expr helper
+public alloc_expr(pool: ExprPool, kind: node.ExprKind, span: tok.Span) -> int
+    match kind
+    case Lit(lit):
+        match lit
+        case Int(raw): return alloc_expr_raw(pool, 1, -1, -1, raw)
+        case Str(val): return alloc_expr_raw(pool, 2, -1, -1, val)
+        case Bool(val):
+            if val
+                return alloc_expr_raw(pool, 3, -1, -1, "true")
+            else
+                return alloc_expr_raw(pool, 3, -1, -1, "false")
+            end
+        case else: return alloc_expr_raw(pool, 0, -1, -1, "")
+        end
+    case Ident(name):
+        return alloc_expr_raw(pool, 4, -1, -1, name)
+    case Binary(op, left_id, right_id):
+        const spelling = match op
+            case Add: "+"
+            case Sub: "-"
+            case Mul: "*"
+            case Div: "/"
+            case Mod: "%"
+            case Eq: "=="
+            case Ne: "!="
+            case Lt: "<"
+            case Le: "<="
+            case Gt: ">"
+            case Ge: ">="
+            case And: "and"
+            case Or: "or"
+            case Band: "&"
+            case Bor: "|"
+            case Bxor: "^"
+            case Shl: "<<"
+            case Shr: ">>"
+            case Pipe: "|>"
+            case Range: ".."
+            end
+        return alloc_expr_raw(pool, 5, left_id, right_id, spelling)
+    case Call(callee, arg_ids):
+        var first_arg = -1
+        if lists.len(arg_ids) > 0
+            first_arg = lists.get(arg_ids, 0)
+        end
+        const id = alloc_expr_raw(pool, 6, first_arg, -1, callee)
+        record_call_args(pool, id, arg_ids)
+        return id
+    case else:
+        return alloc_expr_raw(pool, 0, -1, -1, "")
+    end
+end
+
+public struct ParseExprOut
+    expr_id: int
+    next_cursor: int
+end
+
+public parse_primary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> optional[ParseExprOut]
+    if cursor >= lists.len(tokens)
+        return none
+    end
+
+    const t = lists.get(tokens, cursor)
+    match t.kind
+    case IntLit(raw):
+        const id = alloc_expr_raw(pool, 1, -1, -1, raw)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case FloatLit(raw):
+        -- The v1 bridge cannot lower floats; keep them distinct from integers.
+        const id = alloc_expr_raw(pool, 8, -1, -1, raw)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case StrLit(value):
+        const id = alloc_expr_raw(pool, 2, -1, -1, value)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case BytesLit(raw):
+        -- A byte sequence cannot be passed as a String by the scalar bridge.
+        const id = alloc_expr_raw(pool, 12, -1, -1, raw)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case FStrLit(raw):
+        -- Treat interpolation as its own expression until it has real lowering.
+        const id = alloc_expr_raw(pool, 9, -1, -1, raw)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case True:
+        const id = alloc_expr_raw(pool, 3, -1, -1, "true")
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case False:
+        const id = alloc_expr_raw(pool, 3, -1, -1, "false")
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case Not:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 70)
+        case some(operand):
+            -- Preserve short-circuit semantics using the bridge's typed
+            -- Boolean conditional expression.
+            const no_id = alloc_expr_raw(pool, 3, -1, -1, "false")
+            const yes_id = alloc_expr_raw(pool, 3, -1, -1, "true")
+            const id = alloc_expr_raw(pool, 11, operand.expr_id, no_id, "if_expr")
+            lists.set(pool.third_ids, id, yes_id)
+            return some(ParseExprOut { expr_id: id, next_cursor: operand.next_cursor })
+        case none:
+            return none
+        end
+    case Minus:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 70)
+        case some(operand):
+            const zero = alloc_expr_raw(pool, 1, -1, -1, "0")
+            const id = alloc_expr_raw(pool, 5, zero, operand.expr_id, "-")
+            return some(ParseExprOut { expr_id: id, next_cursor: operand.next_cursor })
+        case none:
+            return none
+        end
+    case None:
+        const id = alloc_expr_raw(pool, 0, -1, -1, "none")
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case If:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 0)
+        case some(cond):
+            if cond.next_cursor >= lists.len(tokens)
+                return none
+            end
+            const separator = lists.get(tokens, cond.next_cursor)
+            match separator.kind
+            case Then:
+                match parse_binary_with_min(tokens, cond.next_cursor + 1, pool, 0)
+                case some(yes):
+                    if yes.next_cursor >= lists.len(tokens)
+                        return none
+                    end
+                    const other = lists.get(tokens, yes.next_cursor)
+                    match other.kind
+                    case Else:
+                        match parse_binary_with_min(tokens, yes.next_cursor + 1, pool, 0)
+                        case some(no):
+                            const id = alloc_expr_raw(pool, 11, cond.expr_id, yes.expr_id, "if_expr")
+                            lists.set(pool.third_ids, id, no.expr_id)
+                            return some(ParseExprOut { expr_id: id, next_cursor: no.next_cursor })
+                        case none:
+                            return none
+                        end
+                    case else:
+                        return none
+                    end
+                case none:
+                    return none
+                end
+            case else:
+                return none
+            end
+        case none:
+            return none
+        end
+    case Match:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 0)
+        case none:
+            return none
+        case some(scrutinee):
+            var cur = scrutinee.next_cursor
+            -- Reuse the ordered argument arena as alternating pattern/body
+            -- IDs. -1 represents a wildcard; malformed cases fail closed.
+            const arms: list[int] = []
+            while cur < lists.len(tokens)
+                const boundary = lists.get(tokens, cur)
+                match boundary.kind
+                case End:
+                    if lists.len(arms) == 0
+                        return none
+                    end
+                    const id = alloc_expr_raw(pool, 13, scrutinee.expr_id, -1, "match_expr")
+                    record_call_args(pool, id, arms)
+                    return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
+                case Case:
+                    if cur + 2 >= lists.len(tokens)
+                        return none
+                    end
+                    const pat = lists.get(tokens, cur + 1)
+                    var pat_id = -1
+                    var valid = true
+                    var separator_cursor = cur + 2
+                    match pat.kind
+                    case IntLit(raw): pat_id = alloc_expr_raw(pool, 1, -1, -1, raw)
+                    case Minus:
+                        if cur + 3 >= lists.len(tokens)
+                            return none
+                        end
+                        const signed = lists.get(tokens, cur + 2)
+                        match signed.kind
+                        case IntLit(raw):
+                            pat_id = alloc_expr_raw(pool, 1, -1, -1, "-" + raw)
+                            separator_cursor = cur + 3
+                        case else:
+                            return none
+                        end
+                    case True: pat_id = alloc_expr_raw(pool, 3, -1, -1, "true")
+                    case False: pat_id = alloc_expr_raw(pool, 3, -1, -1, "false")
+                    case Else:
+                    case Ident(name):
+                        if name != "_"
+                            valid = false
+                        end
+                    case else:
+                        valid = false
+                    end
+                    const separator = lists.get(tokens, separator_cursor)
+                    match separator.kind
+                    case Colon:
+                    case else: valid = false
+                    end
+                    if not valid
+                        return none
+                    end
+                    match parse_binary_with_min(tokens, separator_cursor + 1, pool, 0)
+                    case some(body):
+                        lists.push(arms, pat_id)
+                        lists.push(arms, body.expr_id)
+                        cur = body.next_cursor
+                    case none:
+                        return none
+                    end
+                case else:
+                    return none
+                end
+            end
+            return none
+        end
+    case LBracket:
+        -- Typed empty lists are common in compiler code. Preserve a distinct
+        -- node; code generation rejects it until collection lowering exists.
+        if cursor + 1 < lists.len(tokens)
+            const close_tok = lists.get(tokens, cursor + 1)
+            match close_tok.kind
+            case RBracket:
+                const id = alloc_expr_raw(pool, 7, -1, -1, "")
+                return some(ParseExprOut { expr_id: id, next_cursor: cursor + 2 })
+            case else:
+            end
+        end
+        return none
+    case LParen:
+        match parse_binary_with_min(tokens, cursor + 1, pool, 0)
+        case some(grouped):
+            if grouped.next_cursor < lists.len(tokens)
+                const close = lists.get(tokens, grouped.next_cursor)
+                match close.kind
+                case RParen:
+                    return some(ParseExprOut { expr_id: grouped.expr_id, next_cursor: grouped.next_cursor + 1 })
+                case else:
+                end
+            end
+            return none
+        case none:
+            return none
+        end
+    case Ident(name):
+        if cursor + 1 < lists.len(tokens)
+            const next_tok = lists.get(tokens, cursor + 1)
+            match next_tok.kind
+            case LParen:
+                return parse_call(tokens, cursor, pool, name, t.span)
+            case Dot:
+                if cursor + 3 < lists.len(tokens)
+                    const base_name = name + ""
+                    const member_tok = lists.get(tokens, cursor + 2)
+                    const open_tok = lists.get(tokens, cursor + 3)
+                    match member_tok.kind
+                    case Ident(name):
+                        match open_tok.kind
+                        case LParen:
+                            const qualified_name = base_name + "." + name
+                            return parse_call(tokens, cursor + 2, pool, qualified_name, t.span)
+                        case else:
+                        end
+                    case else:
+                    end
+                end
+            case else:
+                const id = alloc_expr_raw(pool, 4, -1, -1, name)
+                return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+            end
+        end
+        const id = alloc_expr_raw(pool, 4, -1, -1, name)
+        return some(ParseExprOut { expr_id: id, next_cursor: cursor + 1 })
+    case else:
+        return none
+    end
+end
+
+public parse_call(tokens: list[tok.Token], cursor: int, pool: ExprPool, fn_name: string, span: tok.Span) -> optional[ParseExprOut]
+    -- Preserve the callee while parsing arguments, which can allocate and
+    -- release the token carrying the original name.
+    const owned_fn_name = fn_name + ""
+    var cur = cursor + 2 -- Skip ident and '('
+    const args: list[int] = []
+    var expecting_arg = true
+    while cur < lists.len(tokens)
+        const t = lists.get(tokens, cur)
+        match t.kind
+        case RParen:
+            if expecting_arg and lists.len(args) > 0
+                return none
+            end
+            var first_arg = -1
+            if lists.len(args) > 0
+                first_arg = lists.get(args, 0)
+            end
+            const id = alloc_expr_raw(pool, 6, first_arg, -1, owned_fn_name)
+            record_call_args(pool, id, args)
+            return some(ParseExprOut { expr_id: id, next_cursor: cur + 1 })
+        case Comma:
+            if expecting_arg or lists.len(args) == 0
+                return none
+            end
+            expecting_arg = true
+            cur = cur + 1
+        case else:
+            if not expecting_arg
+                return none
+            end
+            match parse_binary_with_min(tokens, cur, pool, 0)
+            case some(out):
+                expecting_arg = false
+                lists.push(args, out.expr_id)
+                cur = out.next_cursor
+            case none:
+                return none
+            end
+        end
+    end
+    return none
+end
+
+public parse_binary(tokens: list[tok.Token], cursor: int, pool: ExprPool) -> optional[ParseExprOut]
+    return parse_binary_with_min(tokens, cursor, pool, 0)
+end
+
+operator_power(kind: tok.TokenKind) -> int
+    match kind
+    case DotDot: return 5
+    case Pipe: return 10
+    case Or: return 20
+    case And: return 30
+    case Bar: return 32
+    case Caret: return 34
+    case Amp: return 36
+    case EqEq: return 40
+    case BangEq: return 40
+    case Lt: return 40
+    case LtEq: return 40
+    case Gt: return 40
+    case GtEq: return 40
+    case Shl: return 45
+    case Shr: return 45
+    case Plus: return 50
+    case Minus: return 50
+    case Star: return 60
+    case Slash: return 60
+    case Percent: return 60
+    case else: return -1
+    end
+end
+
+operator_spelling(kind: tok.TokenKind) -> string
+    match kind
+    case DotDot: return ".."
+    case Pipe: return "|>"
+    case Or: return "or"
+    case And: return "and"
+    case Bar: return "|"
+    case Caret: return "^"
+    case Amp: return "&"
+    case EqEq: return "=="
+    case BangEq: return "!="
+    case Lt: return "<"
+    case LtEq: return "<="
+    case Gt: return ">"
+    case GtEq: return ">="
+    case Shl: return "<<"
+    case Shr: return ">>"
+    case Plus: return "+"
+    case Minus: return "-"
+    case Star: return "*"
+    case Slash: return "/"
+    case Percent: return "%"
+    case else: return ""
+    end
+end
+
+public parse_binary_with_min(tokens: list[tok.Token], cursor: int, pool: ExprPool, min_power: int) -> optional[ParseExprOut]
+    match parse_primary(tokens, cursor, pool)
+    case some(left_out):
+        var cur = left_out.next_cursor
+        var current_id = left_out.expr_id
+
+        while cur < lists.len(tokens)
+            const t = lists.get(tokens, cur)
+            const power = operator_power(t.kind)
+            if power < min_power
+                return some(ParseExprOut { expr_id: current_id, next_cursor: cur })
+            end
+            match parse_binary_with_min(tokens, cur + 1, pool, power + 1)
+            case some(right_out):
+                current_id = alloc_expr_raw(pool, 5, current_id, right_out.expr_id, operator_spelling(t.kind))
+                cur = right_out.next_cursor
+            case none:
+                return some(ParseExprOut { expr_id: current_id, next_cursor: cur })
+            end
+        end
+        return some(ParseExprOut { expr_id: current_id, next_cursor: cur })
+    case none:
+        return none
+    end
+end
+
+public total_exprs(pool: ExprPool) -> int
+    return lists.len(pool.kind_tags)
+end

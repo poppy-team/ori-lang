@@ -345,6 +345,98 @@ end
 }
 
 #[test]
+fn compile_runs_chained_string_interpolations_without_buffer_corruption() {
+    let dir = TestDir::new("chained_string_interpolations");
+    dir.write(
+        "main.orl",
+        r#"module app.main
+
+import ori.io as io
+
+format_pair(a: string, b: string) -> string
+    return f"A={a} B={b}"
+end
+
+main()
+    const p1: string = format_pair("alpha", "beta")
+    const p2: string = format_pair("gamma", "delta")
+    const combined: string = f"{p1} | {p2}"
+    io.println(combined)
+end
+"#,
+    );
+
+    let stdout = compile_and_run(&dir, "chained_string_interpolations");
+    assert_eq!(stdout, "A=alpha B=beta | A=gamma B=delta\n");
+}
+
+#[test]
+fn compile_runs_nested_struct_newtypes_in_list_no_corruption() {
+    let dir = TestDir::new("nested_struct_list_newtypes");
+    dir.write(
+        "main.orl",
+        r#"module app.main
+
+import ori.io as io
+import ori.list as lists
+
+newtype SymId = int
+newtype ByteOff = int
+
+struct Span
+    start_pos: ByteOff
+    end_pos: ByteOff
+end
+
+enum Kind
+    Var
+    Fn
+    TyDecl
+end
+
+struct Symbol
+    id: SymId
+    name: string
+    kind: Kind
+    span: Span
+end
+
+struct Scope
+    syms: list[Symbol]
+end
+
+def_sym(s: Scope, id: int, name: string)
+    const span = Span {
+        start_pos: ByteOff(0),
+        end_pos: ByteOff(10)
+    }
+    const sym = Symbol {
+        id: SymId(id),
+        name: name,
+        kind: Kind.TyDecl,
+        span: span
+    }
+    lists.push(s.syms, sym)
+end
+
+main()
+    const empty_s: list[Symbol] = []
+    const s = Scope { syms: empty_s }
+    def_sym(s, 1, "Point")
+    def_sym(s, 2, "Direction")
+    const s0 = lists.get(s.syms, 0)
+    const s1 = lists.get(s.syms, 1)
+    io.println(f"0={s0.name}")
+    io.println(f"1={s1.name}")
+end
+"#,
+    );
+
+    let stdout = compile_and_run(&dir, "nested_struct_list_newtypes");
+    assert_eq!(stdout, "0=Point\n1=Direction\n");
+}
+
+#[test]
 fn compile_runs_for_in_over_list_string_without_corruption() {
     let dir = TestDir::new("for_in_list_string");
     dir.write(
@@ -11746,6 +11838,12 @@ import ori.fs = fs
 import ori.io = io
 
 main()
+    match fs.parse_fs_error("The system cannot find the file specified. (os error 2)")
+        case NotFound:
+            io.println("WINDOWS_NOT_FOUND_OK")
+        case else:
+            io.println("WINDOWS_NOT_FOUND_WRONG")
+    end
     match fs.try_read_text("non_existent_file_xyz_12345.txt")
         case ok(_):
             io.println("UNEXPECTED_OK")
@@ -11768,6 +11866,7 @@ end
     dir.write("main.orl", source);
 
     let stdout = compile_and_run(&dir, "fs_typed_error_native");
+    assert!(stdout.contains("WINDOWS_NOT_FOUND_OK"), "stdout: {stdout}");
     assert!(stdout.contains("NOT_FOUND_OK"), "stdout: {stdout}");
 }
 

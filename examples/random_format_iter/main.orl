@@ -1,12 +1,10 @@
 module app.random_format_iter
 
 -- random, format, iter helpers (stdlib Layer 1+2).
-imports
-    ori.format = fmt
-    ori.io = io
-    ori.iter = iter
-    ori.random = rnd
-end
+import ori.format as fmt
+import ori.io as io
+import ori.iter as iter
+import ori.random as rnd
 
 main()
     rnd.seed(42)

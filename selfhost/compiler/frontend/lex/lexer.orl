@@ -1,0 +1,527 @@
+module selfhost.compiler.frontend.lex.lexer
+
+import ori.bytes as bs
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.frontend.lex.number_scan as nscan
+import selfhost.compiler.frontend.lex.string_scan as sscan
+import selfhost.compiler.frontend.lex.token as tok
+
+public struct Lexer
+    source: string
+    byte_data: bytes
+    cursor: int
+    length: int
+end
+
+public new_lexer(source: string) -> Lexer
+    const data = su.to_bytes(source)
+    return Lexer {
+        source: source,
+        byte_data: data,
+        cursor: 0,
+        length: bs.len(data)
+    }
+end
+
+is_eof(lex: Lexer) -> bool
+    return lex.cursor >= lex.length
+end
+
+peek_byte(lex: Lexer) -> int
+    if is_eof(lex)
+        return -1
+    end
+    const b: int = int(bs.get(lex.byte_data, lex.cursor))
+    return b
+end
+
+is_alpha_byte(b: int) -> bool
+    return is_range(b, 65, 90) or is_range(b, 97, 122) or b == 95
+end
+
+is_digit_byte(b: int) -> bool
+    return is_range(b, 48, 57)
+end
+
+is_range(b: int, lo: int, hi: int) -> bool
+    return b >= lo and b <= hi
+end
+
+is_whitespace_byte(b: int) -> bool
+    return b == 32 or b == 9 or b == 10 or b == 13
+end
+
+public struct AdvanceOut
+    ch: int
+    next: Lexer
+end
+
+advance_byte(lex: Lexer) -> AdvanceOut
+    const ch = peek_byte(lex)
+    const moved = Lexer {
+        source: lex.source,
+        byte_data: lex.byte_data,
+        cursor: lex.cursor + 1,
+        length: lex.length
+    }
+    return AdvanceOut { ch: ch, next: moved }
+end
+
+public struct TokenOut
+    token: tok.Token
+    next: Lexer
+end
+
+keyword_kind(text: string) -> optional[tok.TokenKind]
+    if text == "module"
+        return some(tok.TokenKind.Module)
+    elif text == "import"
+        return some(tok.TokenKind.Import)
+    elif text == "as"
+        return some(tok.TokenKind.As)
+    elif text == "public"
+        return some(tok.TokenKind.Public)
+    elif text == "struct"
+        return some(tok.TokenKind.Struct)
+    elif text == "enum"
+        return some(tok.TokenKind.Enum)
+    elif text == "trait"
+        return some(tok.TokenKind.Trait)
+    elif text == "apply"
+        return some(tok.TokenKind.Apply)
+    elif text == "using"
+        return some(tok.TokenKind.Using)
+    elif text == "check"
+        return some(tok.TokenKind.Check)
+    elif text == "with"
+        return some(tok.TokenKind.With)
+    elif text == "then"
+        return some(tok.TokenKind.Then)
+    elif text == "const"
+        return some(tok.TokenKind.Const)
+    elif text == "var"
+        return some(tok.TokenKind.Var)
+    elif text == "while"
+        return some(tok.TokenKind.While)
+    elif text == "for"
+        return some(tok.TokenKind.For)
+    elif text == "loop"
+        return some(tok.TokenKind.Loop)
+    elif text == "repeat"
+        return some(tok.TokenKind.Repeat)
+    elif text == "break"
+        return some(tok.TokenKind.Break)
+    elif text == "continue"
+        return some(tok.TokenKind.Continue)
+    elif text == "if"
+        return some(tok.TokenKind.If)
+    elif text == "else"
+        return some(tok.TokenKind.Else)
+    elif text == "elif"
+        return some(tok.TokenKind.Elif)
+    elif text == "end"
+        return some(tok.TokenKind.End)
+    elif text == "return"
+        return some(tok.TokenKind.Return)
+    elif text == "match"
+        return some(tok.TokenKind.Match)
+    elif text == "case"
+        return some(tok.TokenKind.Case)
+    elif text == "true"
+        return some(tok.TokenKind.True)
+    elif text == "false"
+        return some(tok.TokenKind.False)
+    elif text == "newtype"
+        return some(tok.TokenKind.Newtype)
+    elif text == "alias"
+        return some(tok.TokenKind.Alias)
+    elif text == "bool"
+        return some(tok.TokenKind.BoolTy)
+    elif text == "int"
+        return some(tok.TokenKind.IntTy)
+    elif text == "int8"
+        return some(tok.TokenKind.Int8Ty)
+    elif text == "int16"
+        return some(tok.TokenKind.Int16Ty)
+    elif text == "int32"
+        return some(tok.TokenKind.Int32Ty)
+    elif text == "int64"
+        return some(tok.TokenKind.Int64Ty)
+    elif text == "u8"
+        return some(tok.TokenKind.U8Ty)
+    elif text == "u16"
+        return some(tok.TokenKind.U16Ty)
+    elif text == "u32"
+        return some(tok.TokenKind.U32Ty)
+    elif text == "u64"
+        return some(tok.TokenKind.U64Ty)
+    elif text == "float"
+        return some(tok.TokenKind.FloatTy)
+    elif text == "float32"
+        return some(tok.TokenKind.Float32Ty)
+    elif text == "float64"
+        return some(tok.TokenKind.Float64Ty)
+    elif text == "string"
+        return some(tok.TokenKind.StringTy)
+    elif text == "bytes"
+        return some(tok.TokenKind.BytesTy)
+    elif text == "void"
+        return some(tok.TokenKind.Void)
+    elif text == "any"
+        return some(tok.TokenKind.Any)
+    elif text == "optional"
+        return some(tok.TokenKind.Optional)
+    elif text == "result"
+        return some(tok.TokenKind.ResultKw)
+    elif text == "list"
+        return some(tok.TokenKind.List)
+    elif text == "map"
+        return some(tok.TokenKind.Map)
+    elif text == "set"
+        return some(tok.TokenKind.Set)
+    elif text == "range"
+        return some(tok.TokenKind.Range)
+    elif text == "none"
+        return some(tok.TokenKind.None)
+    elif text == "some"
+        return some(tok.TokenKind.Some)
+    elif text == "self"
+        return some(tok.TokenKind.SelfKw)
+    elif text == "mut"
+        return some(tok.TokenKind.Mut)
+    elif text == "extern"
+        return some(tok.TokenKind.Extern)
+    elif text == "attr"
+        return some(tok.TokenKind.Attr)
+    elif text == "where"
+        return some(tok.TokenKind.Where)
+    elif text == "is"
+        return some(tok.TokenKind.Is)
+    elif text == "do"
+        return some(tok.TokenKind.Do)
+    elif text == "and"
+        return some(tok.TokenKind.And)
+    elif text == "or"
+        return some(tok.TokenKind.Or)
+    elif text == "not"
+        return some(tok.TokenKind.Not)
+    end
+    return none
+end
+
+scan_word(lex: Lexer) -> TokenOut
+    const start = lex.cursor
+    var cur = lex
+    while not is_eof(cur) and (is_alpha_byte(peek_byte(cur)) or is_digit_byte(peek_byte(cur)))
+        const step = advance_byte(cur)
+        cur = step.next
+    end
+    const text_bytes = bs.slice(lex.byte_data, start, cur.cursor)
+    const text = match bs.decode_utf8(text_bytes)
+        case ok(s): s
+        case err(_): ""
+        end
+    const span = tok.Span {
+        start_pos: tok.ByteOffset(start),
+        end_pos: tok.ByteOffset(cur.cursor)
+    }
+    match keyword_kind(text)
+    case some(kind):
+        return TokenOut { token: tok.Token { kind: kind, span: span }, next: cur }
+    case none:
+        return TokenOut { token: tok.Token { kind: tok.TokenKind.Ident(name: text), span: span }, next: cur }
+    end
+end
+
+scan_number(lex: Lexer) -> TokenOut
+    const start = lex.cursor
+    const res = nscan.scan_number_full(lex.byte_data, start, lex.length)
+    const next_lex = Lexer {
+        source: lex.source,
+        byte_data: lex.byte_data,
+        cursor: res.end_cursor,
+        length: lex.length
+    }
+    const span = tok.Span {
+        start_pos: tok.ByteOffset(start),
+        end_pos: tok.ByteOffset(res.end_cursor)
+    }
+    if res.is_float
+        return TokenOut { token: tok.Token { kind: tok.TokenKind.FloatLit(raw: res.raw), span: span }, next: next_lex }
+    else
+        return TokenOut { token: tok.Token { kind: tok.TokenKind.IntLit(raw: res.raw), span: span }, next: next_lex }
+    end
+end
+
+public struct NextOut
+    token: optional[tok.Token]
+    next: Lexer
+end
+
+skip_ws(lex: Lexer) -> Lexer
+    var cur = lex
+    var looping = true
+    while looping and not is_eof(cur)
+        if is_whitespace_byte(peek_byte(cur))
+            const step = advance_byte(cur)
+            cur = step.next
+        elif peek_byte(cur) == 45 and cur.cursor + 1 < cur.length and int(bs.get(cur.byte_data, cur.cursor + 1)) == 45
+            -- Comment '--'
+            if cur.cursor + 2 < cur.length and int(bs.get(cur.byte_data, cur.cursor + 2)) == 124
+                -- Block comment '--| ... |--'
+                var b_step = advance_byte(advance_byte(advance_byte(cur).next).next)
+                cur = b_step.next
+                var in_block = true
+                while in_block and not is_eof(cur)
+                    if peek_byte(cur) == 124 and cur.cursor + 2 < cur.length and int(bs.get(cur.byte_data, cur.cursor + 1)) == 45 and int(bs.get(cur.byte_data, cur.cursor + 2)) == 45
+                        cur = advance_byte(advance_byte(advance_byte(cur).next).next).next
+                        in_block = false
+                    else
+                        cur = advance_byte(cur).next
+                    end
+                end
+            else
+                -- Line comment '--' skip to newline
+                while not is_eof(cur) and peek_byte(cur) != 10
+                    cur = advance_byte(cur).next
+                end
+            end
+        else
+            looping = false
+        end
+    end
+    return cur
+end
+
+public next_token(lex: Lexer) -> NextOut
+    const clean = skip_ws(lex)
+    if is_eof(clean)
+        return NextOut { token: none, next: clean }
+    end
+
+    const start = clean.cursor
+    const ch = peek_byte(clean)
+
+    if is_alpha_byte(ch)
+        if ch == 102 or ch == 98 -- 'f' or 'b' prefix: may be a string literal
+            const str_try = sscan.scan_string_full(clean.source, start, clean.length)
+            if str_try.error_code == ""
+                const s_span = tok.Span {
+                    start_pos: tok.ByteOffset(start),
+                    end_pos: tok.ByteOffset(str_try.end_cursor)
+                }
+                const after_str = Lexer {
+                    source: clean.source,
+                    byte_data: clean.byte_data,
+                    cursor: str_try.end_cursor,
+                    length: clean.length
+                }
+                if str_try.is_bytes
+                    return NextOut { token: some(tok.Token { kind: tok.TokenKind.BytesLit(raw: str_try.raw), span: s_span }), next: after_str }
+                elif str_try.is_fstr
+                    return NextOut { token: some(tok.Token { kind: tok.TokenKind.FStrLit(raw: str_try.raw), span: s_span }), next: after_str }
+                else
+                    return NextOut { token: some(tok.Token { kind: tok.TokenKind.StrLit(value: str_try.decoded), span: s_span }), next: after_str }
+                end
+            end
+        end
+        const out = scan_word(clean)
+        return NextOut { token: some(out.token), next: out.next }
+    elif is_digit_byte(ch)
+        const out = scan_number(clean)
+        return NextOut { token: some(out.token), next: out.next }
+    elif ch == 34 -- plain '"' string
+        const str_res = sscan.scan_string_full(clean.source, start, clean.length)
+        if str_res.error_code == ""
+            const s_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(str_res.end_cursor)
+            }
+            const after_str = Lexer {
+                source: clean.source,
+                byte_data: clean.byte_data,
+                cursor: str_res.end_cursor,
+                length: clean.length
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.StrLit(value: str_res.decoded), span: s_span }), next: after_str }
+        end
+    end
+
+    const step = advance_byte(clean)
+    const cur = step.next
+    const span = tok.Span {
+        start_pos: tok.ByteOffset(start),
+        end_pos: tok.ByteOffset(cur.cursor)
+    }
+
+    if ch == 58
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Colon, span: span }), next: cur }
+    elif ch == 64 -- '@'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.At, span: span }), next: cur }
+    elif ch == 42 -- '*'
+        if peek_byte(cur) == 61 -- '*='
+            const st = advance_byte(cur)
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.StarEq, span: span }), next: st.next }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Star, span: span }), next: cur }
+    elif ch == 47 -- '/'
+        if peek_byte(cur) == 61 -- '/='
+            const st = advance_byte(cur)
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.SlashEq, span: span }), next: st.next }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Slash, span: span }), next: cur }
+    elif ch == 37 -- '%'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Percent, span: span }), next: cur }
+    elif ch == 43 -- '+'
+        if peek_byte(cur) == 61 -- '+='
+            const st = advance_byte(cur)
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.PlusEq, span: span }), next: st.next }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Plus, span: span }), next: cur }
+    elif ch == 45 -- '-'
+        if peek_byte(cur) == 61 -- '-='
+            const st = advance_byte(cur)
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.MinusEq, span: span }), next: st.next }
+        elif peek_byte(cur) == 62 -- '->'
+            const arrow_step = advance_byte(cur)
+            const after = arrow_step.next
+            const arrow_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Arrow, span: arrow_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Minus, span: span }), next: cur }
+    elif ch == 44
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Comma, span: span }), next: cur }
+    elif ch == 46
+        if peek_byte(cur) == 46 -- '..' range
+            const range_step = advance_byte(cur)
+            const after = range_step.next
+            const range_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.DotDot, span: range_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Dot, span: span }), next: cur }
+    elif ch == 38 -- '&'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Amp, span: span }), next: cur }
+    elif ch == 124 -- '|' (single pipe is bitwise OR; pipe op '|>' handled by pratt)
+        if peek_byte(cur) == 62 -- '>' forms the pipe '|>' operator
+            const pipe_step = advance_byte(cur)
+            const after = pipe_step.next
+            const pipe_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Pipe, span: pipe_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Bar, span: span }), next: cur }
+    elif ch == 94 -- '^'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Caret, span: span }), next: cur }
+    elif ch == 126 -- '~'
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Tilde, span: span }), next: cur }
+    elif ch == 33 -- '!'
+        if peek_byte(cur) == 61 -- '!='
+            const after = advance_byte(cur).next
+            const ne_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.BangEq, span: ne_span }), next: after }
+        end
+    elif ch == 60
+        if peek_byte(cur) == 60 -- '<<'
+            const shl_step = advance_byte(cur)
+            const after = shl_step.next
+            const shl_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Shl, span: shl_span }), next: after }
+        elif peek_byte(cur) == 61
+            const lte_step = advance_byte(cur)
+            const after = lte_step.next
+            const lte_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.LtEq, span: lte_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Lt, span: span }), next: cur }
+    elif ch == 62
+        if peek_byte(cur) == 62 -- '>>'
+            const shr_step = advance_byte(cur)
+            const after = shr_step.next
+            const shr_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.Shr, span: shr_span }), next: after }
+        elif peek_byte(cur) == 61
+            const gte_step = advance_byte(cur)
+            const after = gte_step.next
+            const gte_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.GtEq, span: gte_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Gt, span: span }), next: cur }
+    elif ch == 40
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.LParen, span: span }), next: cur }
+    elif ch == 41
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.RParen, span: span }), next: cur }
+    elif ch == 91
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.LBracket, span: span }), next: cur }
+    elif ch == 93
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.RBracket, span: span }), next: cur }
+    elif ch == 123
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.LBrace, span: span }), next: cur }
+    elif ch == 125
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.RBrace, span: span }), next: cur }
+    elif ch == 61 -- '='
+        if peek_byte(cur) == 62 -- '=>'
+            const arrow_step = advance_byte(cur)
+            const after = arrow_step.next
+            const fat_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.FatArrow, span: fat_span }), next: after }
+        elif peek_byte(cur) == 61 -- '=='
+            const eq_step = advance_byte(cur)
+            const after = eq_step.next
+            const eq_span = tok.Span {
+                start_pos: tok.ByteOffset(start),
+                end_pos: tok.ByteOffset(after.cursor)
+            }
+            return NextOut { token: some(tok.Token { kind: tok.TokenKind.EqEq, span: eq_span }), next: after }
+        end
+        return NextOut { token: some(tok.Token { kind: tok.TokenKind.Eq, span: span }), next: cur }
+    end
+
+    -- Unknown bytes must remain visible to the parser. Discarding one can
+    -- turn an invalid program into a different, executable program.
+    return NextOut { token: some(tok.Token { kind: tok.TokenKind.Invalid, span: span }), next: cur }
+end
+
+public tokenize_all(source: string) -> list[tok.Token]
+    const tokens: list[tok.Token] = []
+    var cur = new_lexer(source)
+    while true
+        const out = next_token(cur)
+        cur = out.next
+        match out.token
+        case some(t):
+            lists.push(tokens, t)
+        case none:
+            if is_eof(cur)
+                return tokens
+            end
+        end
+    end
+    return tokens
+end

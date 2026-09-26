@@ -1,0 +1,108 @@
+module selfhost.compiler.frontend.types.stdlib_broad
+
+import ori.list as lists
+
+public struct BroadCatalog
+    paths: list[string]
+    shapes: list[string]
+end
+
+public new_broad_catalog() -> BroadCatalog
+    const empty_p: list[string] = []
+    const empty_s: list[string] = []
+    return BroadCatalog {
+        paths: empty_p,
+        shapes: empty_s
+    }
+end
+
+public reg(catalog: BroadCatalog, path: string, shape: string)
+    lists.push(catalog.paths, path)
+    lists.push(catalog.shapes, shape)
+end
+
+public look(catalog: BroadCatalog, path: string) -> optional[string]
+    var i = 0
+    const count = lists.len(catalog.paths)
+    while i < count
+        if lists.get(catalog.paths, i) == path
+            return some(lists.get(catalog.shapes, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public seed_broad_surface(catalog: BroadCatalog)
+    -- Collections and data
+    reg(catalog, "ori.list.len", "int")
+    reg(catalog, "ori.list.push", "void")
+    reg(catalog, "ori.list.get", "T")
+    reg(catalog, "ori.list.pop", "T")
+    reg(catalog, "ori.map.get", "optional[V]")
+    reg(catalog, "ori.map.set", "void")
+    reg(catalog, "ori.set.contains", "bool")
+    reg(catalog, "ori.buffer.len", "int")
+    reg(catalog, "ori.slice.len", "int")
+    reg(catalog, "ori.heap.push", "void")
+    -- Strings and bytes
+    reg(catalog, "ori.string.len", "int")
+    reg(catalog, "ori.string.slice", "string")
+    reg(catalog, "ori.string.trim", "string")
+    reg(catalog, "ori.string.concat", "string")
+    reg(catalog, "ori.bytes.len", "int")
+    reg(catalog, "ori.bytes.to_hex", "string")
+    -- Memory and handles
+    reg(catalog, "ori.mem.region", "Region")
+    reg(catalog, "ori.handle.null", "Handle")
+    -- Channels and atomics
+    reg(catalog, "ori.channel.send", "result[void,string]")
+    reg(catalog, "ori.channel.receive", "result[T,string]")
+    reg(catalog, "ori.atomic.load", "int")
+    -- FS and IO
+    reg(catalog, "ori.io.println", "void")
+    reg(catalog, "ori.fs.read_text", "result[string,string]")
+    reg(catalog, "ori.fs.write_text", "result[string,string]")
+    reg(catalog, "ori.fs.list_dir", "result[list[string],string]")
+    -- Network, processes and OS
+    reg(catalog, "ori.net.connect", "result[Connection,string]")
+    reg(catalog, "ori.os.args", "list[string]")
+    reg(catalog, "ori.process.run_capture", "result[Output,string]")
+    reg(catalog, "ori.random.int", "int")
+    -- Async and tasks
+    reg(catalog, "ori.task.spawn", "TaskJob")
+    reg(catalog, "ori.task.join", "result[T,JoinError]")
+    -- Time and crypto
+    reg(catalog, "ori.time.now", "Instant")
+    reg(catalog, "ori.crypto.sha256", "bytes")
+    reg(catalog, "ori.format.json_pretty", "string")
+    reg(catalog, "ori.json.parse", "result[Value,string]")
+    reg(catalog, "ori.iter.map", "Lazy")
+    -- Additional coverage: queues, stacks, deques, math, test harness
+    reg(catalog, "ori.queue.enqueue", "void")
+    reg(catalog, "ori.queue.dequeue", "optional[T]")
+    reg(catalog, "ori.stack.push", "void")
+    reg(catalog, "ori.stack.pop", "optional[T]")
+    reg(catalog, "ori.deque.push_front", "void")
+    reg(catalog, "ori.deque.pop_back", "optional[T]")
+    reg(catalog, "ori.math.abs", "int")
+    reg(catalog, "ori.math.sqrt", "float")
+    reg(catalog, "ori.math.min", "int")
+    reg(catalog, "ori.math.max", "int")
+    reg(catalog, "ori.test.assert", "void")
+    reg(catalog, "ori.test.assert_eq", "void")
+    reg(catalog, "ori.test.summary", "string")
+    reg(catalog, "ori.fs.exists", "result[bool,string]")
+    reg(catalog, "ori.fs.create_dir", "result[void,string]")
+    reg(catalog, "ori.fs.delete", "result[void,string]")
+    reg(catalog, "ori.net.listen", "result[Listener,string]")
+    reg(catalog, "ori.net.accept", "result[Connection,string]")
+    reg(catalog, "ori.task.sleep", "void")
+    reg(catalog, "ori.lazy.force", "T")
+    reg(catalog, "ori.io.print", "void")
+    reg(catalog, "ori.io.read_line", "optional[string]")
+end
+
+public broad_count(catalog: BroadCatalog) -> int
+    return lists.len(catalog.paths)
+end

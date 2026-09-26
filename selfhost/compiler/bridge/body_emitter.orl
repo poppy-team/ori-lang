@@ -1,0 +1,729 @@
+module selfhost.compiler.bridge.body_emitter
+
+import ori.bytes as bs
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+
+-- Validate the bridge's supported scalar subset before serializing anything.
+public can_emit_int_expr(pool: exprs.ExprPool, id: int, local_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 1
+        return true
+    end
+    if tag == 4
+        const name = lists.get(pool.str_vals, id)
+        var local_idx = 0
+        while local_idx < lists.len(local_names)
+            if name == lists.get(local_names, local_idx)
+                return true
+            end
+            local_idx = local_idx + 1
+        end
+        return false
+    end
+    if tag == 5
+        const op = lists.get(pool.str_vals, id)
+        if op != "+" and op != "-" and op != "*" and op != "/" and op != "%"
+            return false
+        end
+        return can_emit_int_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 6
+        if lists.get(pool.str_vals, id) == "ori.list.len" and lists.get(pool.call_arg_counts, id) == 1
+            return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, lists.get(pool.call_arg_starts, id)), local_names)
+        end
+        return can_emit_local_call(pool, id, local_names, bool_names, func_names, func_ret_tys, func_param_counts, "int")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.third_ids, id), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 13
+        const no_strings: list[string] = []
+        return can_emit_match_expr(pool, id, "int", local_names, bool_names, no_strings, func_names, func_ret_tys, func_param_counts)
+    end
+    return false
+end
+
+can_emit_local_call(pool: exprs.ExprPool, id: int, local_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], result_ty: string) -> bool
+    const callee = lists.get(pool.str_vals, id)
+    var i = 0
+    while i < lists.len(func_names)
+        if callee != "main" and callee != "println" and callee == lists.get(func_names, i)
+            if lists.get(func_ret_tys, i) != result_ty
+                return false
+            end
+            const arg_count = lists.get(pool.call_arg_counts, id)
+            const first_arg = lists.get(pool.call_arg_starts, id)
+            const expected = lists.get(func_param_counts, i)
+            if expected != arg_count or expected > 8
+                return false
+            end
+            var arg_idx = 0
+            while arg_idx < arg_count
+                if not can_emit_int_expr(pool, lists.get(pool.call_arg_ids, first_arg + arg_idx), local_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+                arg_idx = arg_idx + 1
+            end
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end
+
+public can_emit_bool_expr(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 3
+        return true
+    end
+    if tag == 4
+        const name = lists.get(pool.str_vals, id)
+        var i = 0
+        while i < lists.len(bool_names)
+            if name == lists.get(bool_names, i)
+                return true
+            end
+            i = i + 1
+        end
+        return false
+    end
+    if tag == 6
+        return can_emit_local_call(pool, id, int_names, bool_names, func_names, func_ret_tys, func_param_counts, "bool")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 13
+        const no_strings: list[string] = []
+        return can_emit_match_expr(pool, id, "bool", int_names, bool_names, no_strings, func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 5
+        const op = lists.get(pool.str_vals, id)
+        if op == "and" or op == "or"
+            return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_bool_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+        end
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">="
+            return can_emit_int_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_int_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+        end
+    end
+    return false
+end
+
+can_emit_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 2
+        return true
+    end
+    if tag == 4
+        return contains_name(string_names, lists.get(pool.str_vals, id))
+    end
+    if tag == 6
+        if lists.get(pool.str_vals, id) == "ori.list.get" and lists.get(pool.call_arg_counts, id) == 2
+            const first = lists.get(pool.call_arg_starts, id)
+            return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, first), int_names) and can_emit_int_expr(pool, lists.get(pool.call_arg_ids, first + 1), int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+        end
+        return can_emit_local_call(pool, id, int_names, bool_names, func_names, func_ret_tys, func_param_counts, "string")
+    end
+    if tag == 11
+        return can_emit_bool_expr(pool, lists.get(pool.left_ids, id), int_names, bool_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.right_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and can_emit_string_expr(pool, lists.get(pool.third_ids, id), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+    end
+    if tag == 13
+        return can_emit_match_expr(pool, id, "string", int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+    end
+    return false
+end
+
+-- List bindings are recorded with a prefix in int_names so scalar lookup
+-- cannot mistake a list for an integer. Only list[string] crosses this path.
+can_emit_list_string_expr(pool: exprs.ExprPool, id: int, int_names: list[string]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 4
+        return contains_name(int_names, "@list:" + lists.get(pool.str_vals, id))
+    end
+    if tag == 6
+        const callee = lists.get(pool.str_vals, id)
+        return (callee == "ori.args.all" or callee == "ori.os.args") and lists.get(pool.call_arg_counts, id) == 0
+    end
+    return false
+end
+
+can_emit_list_push(pool: exprs.ExprPool, id: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags) or lists.get(pool.kind_tags, id) != 6 or lists.get(pool.str_vals, id) != "ori.list.push" or lists.get(pool.call_arg_counts, id) != 2
+        return false
+    end
+    const first = lists.get(pool.call_arg_starts, id)
+    return can_emit_list_string_expr(pool, lists.get(pool.call_arg_ids, first), int_names) and can_emit_string_expr(pool, lists.get(pool.call_arg_ids, first + 1), int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+end
+
+can_emit_match_expr(pool: exprs.ExprPool, id: int, result_ty: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    const scrutinee_id = lists.get(pool.left_ids, id)
+    const is_int = can_emit_int_expr(pool, scrutinee_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    const is_bool = can_emit_bool_expr(pool, scrutinee_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+    if not is_int and not is_bool
+        return false
+    end
+    const count = lists.get(pool.call_arg_counts, id)
+    const first = lists.get(pool.call_arg_starts, id)
+    if first < 0 or count < 2 or count % 2 != 0
+        return false
+    end
+    var has_wildcard = false
+    var has_true = false
+    var has_false = false
+    const int_patterns: list[string] = []
+    var arm = 0
+    while arm < count
+        if has_wildcard
+            return false
+        end
+        const pattern = lists.get(pool.call_arg_ids, first + arm)
+        const value = lists.get(pool.call_arg_ids, first + arm + 1)
+        if pattern == -1
+            has_wildcard = true
+        elif pattern < 0 or pattern >= lists.len(pool.kind_tags)
+            return false
+        elif is_int and lists.get(pool.kind_tags, pattern) == 1
+            const raw = lists.get(pool.str_vals, pattern)
+            if contains_name(int_patterns, raw)
+                return false
+            end
+            lists.push(int_patterns, raw)
+        elif is_bool and lists.get(pool.kind_tags, pattern) == 3
+            if lists.get(pool.str_vals, pattern) == "true"
+                if has_true
+                    return false
+                end
+                has_true = true
+            end
+            if lists.get(pool.str_vals, pattern) == "false"
+                if has_false
+                    return false
+                end
+                has_false = true
+            end
+        else
+            return false
+        end
+        if result_ty == "int"
+            if not can_emit_int_expr(pool, value, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        elif result_ty == "bool"
+            if not can_emit_bool_expr(pool, value, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        elif result_ty == "string"
+            if not can_emit_string_expr(pool, value, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        else
+            return false
+        end
+        arm = arm + 2
+    end
+    return has_wildcard or (is_bool and has_true and has_false)
+end
+
+public can_emit_print(pool: exprs.ExprPool, id: int, io_alias: string, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return false
+    end
+    if lists.get(pool.kind_tags, id) != 6
+        return false
+    end
+    const callee = lists.get(pool.str_vals, id)
+    if io_alias == "" or callee != io_alias + ".println"
+        return false
+    end
+    const arg_count = lists.get(pool.call_arg_counts, id)
+    if arg_count == 0
+        return true
+    end
+    if arg_count != 1
+        return false
+    end
+    const arg_id = lists.get(pool.call_arg_ids, lists.get(pool.call_arg_starts, id))
+    return can_emit_string_expr(pool, arg_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+end
+
+public can_emit_range(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, param_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> bool
+    if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
+        return false
+    end
+    const int_names: list[string] = []
+    const bool_names: list[string] = []
+    const string_names: list[string] = []
+    const mutable_names: list[string] = []
+    var param_idx = 0
+    while param_idx < lists.len(param_names)
+        const name = lists.get(param_names, param_idx)
+        var previous = 0
+        while previous < lists.len(int_names)
+            if name == lists.get(int_names, previous)
+                return false
+            end
+            previous = previous + 1
+        end
+        lists.push(int_names, name)
+        param_idx = param_idx + 1
+    end
+    return can_emit_block(sp, pool, start_idx, end_idx, ret_ty, io_alias, int_names, bool_names, string_names, mutable_names, func_names, func_ret_tys, func_param_counts, false)
+end
+
+copy_names(names: list[string]) -> list[string]
+    const copy: list[string] = []
+    var i = 0
+    while i < lists.len(names)
+        lists.push(copy, lists.get(names, i))
+        i = i + 1
+    end
+    return copy
+end
+
+contains_name(names: list[string], target: string) -> bool
+    var i = 0
+    while i < lists.len(names)
+        if target == lists.get(names, i)
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end
+
+can_emit_block(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, ret_ty: string, io_alias: string, int_names: list[string], bool_names: list[string], string_names: list[string], mutable_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int], in_loop: bool) -> bool
+    if start_idx < 0 or end_idx > lists.len(sp.kind_tags) or start_idx > end_idx
+        return false
+    end
+    var i = start_idx
+    while i < end_idx
+        const tag = lists.get(sp.kind_tags, i)
+        const expr_id = lists.get(sp.expr_ids, i)
+        const next_idx = lists.get(sp.subtree_ends, i)
+        if next_idx <= i or next_idx > end_idx
+            return false
+        end
+        if tag == 1 or tag == 2
+            if tag == 1
+                const is_int = can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                const is_string = can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                const annotated = lists.get(sp.type_annotations, i)
+                const is_list_string = (annotated == "" or annotated == "list[string]") and can_emit_list_string_expr(pool, expr_id, int_names) or (annotated == "list[string]" and expr_id >= 0 and lists.get(pool.kind_tags, expr_id) == 7)
+                if not is_int and not is_bool and not is_string and not is_list_string
+                    return false
+                end
+                if (is_int and annotated != "" and annotated != "int") or (is_bool and annotated != "" and annotated != "bool") or (is_string and annotated != "" and annotated != "string")
+                    return false
+                end
+                const target = lists.get(sp.target_names, i)
+                if target == "" or contains_name(int_names, target) or contains_name(int_names, "@list:" + target) or contains_name(bool_names, target) or contains_name(string_names, target)
+                    return false
+                end
+                if is_list_string
+                    lists.push(int_names, "@list:" + target)
+                elif is_int
+                    lists.push(int_names, target)
+                elif is_bool
+                    lists.push(bool_names, target)
+                else
+                    lists.push(string_names, target)
+                end
+                if lists.get(sp.mutable_flags, i) == 1
+                    lists.push(mutable_names, target)
+                end
+            elif ret_ty == "int"
+                if not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif ret_ty == "bool"
+                if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif ret_ty == "string"
+                if not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif ret_ty == "void" and expr_id == -1
+            else
+                return false
+            end
+        elif tag == 3
+            if not can_emit_print(pool, expr_id, io_alias, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_list_push(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts) and not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts) and not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+        elif tag == 4
+            if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+            const else_idx = lists.get(sp.branch_starts, i)
+            if else_idx < i + 1 or else_idx > next_idx
+                return false
+            end
+            if not can_emit_block(sp, pool, i + 1, else_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+                return false
+            end
+            if not can_emit_block(sp, pool, else_idx, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+                return false
+            end
+        elif tag == 5
+            if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                return false
+            end
+            if not can_emit_block(sp, pool, i + 1, next_idx, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, true)
+                return false
+            end
+        elif tag == 9
+            const is_int = can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+            const is_bool = can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+            if not is_int and not is_bool
+                return false
+            end
+            var arm = i + 1
+            var arm_count = 0
+            var has_wildcard = false
+            var has_true = false
+            var has_false = false
+            const int_patterns: list[string] = []
+            while arm < next_idx
+                if lists.get(sp.kind_tags, arm) != 10 or has_wildcard
+                    return false
+                end
+                const arm_end = lists.get(sp.subtree_ends, arm)
+                if arm_end <= arm or arm_end > next_idx
+                    return false
+                end
+                const pattern = lists.get(sp.expr_ids, arm)
+                if lists.get(sp.target_names, arm) == "else"
+                    if pattern != -1
+                        return false
+                    end
+                    has_wildcard = true
+                elif pattern < 0 or pattern >= lists.len(pool.kind_tags)
+                    return false
+                elif is_int and lists.get(pool.kind_tags, pattern) == 1
+                    const raw = lists.get(pool.str_vals, pattern)
+                    if contains_name(int_patterns, raw)
+                        return false
+                    end
+                    lists.push(int_patterns, raw)
+                elif is_bool and lists.get(pool.kind_tags, pattern) == 3
+                    if lists.get(pool.str_vals, pattern) == "true"
+                        if has_true
+                            return false
+                        end
+                        has_true = true
+                    end
+                    if lists.get(pool.str_vals, pattern) == "false"
+                        if has_false
+                            return false
+                        end
+                        has_false = true
+                    end
+                else
+                    return false
+                end
+                if not can_emit_block(sp, pool, arm + 1, arm_end, ret_ty, io_alias, copy_names(int_names), copy_names(bool_names), copy_names(string_names), copy_names(mutable_names), func_names, func_ret_tys, func_param_counts, in_loop)
+                    return false
+                end
+                arm_count = arm_count + 1
+                arm = arm_end
+            end
+            if arm_count == 0 or (not has_wildcard and (is_int or not has_true or not has_false))
+                return false
+            end
+        elif tag == 6
+            const target = lists.get(sp.target_names, i)
+            if not contains_name(mutable_names, target)
+                return false
+            end
+            if contains_name(int_names, target)
+                if not can_emit_int_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif contains_name(bool_names, target)
+                if not can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif contains_name(string_names, target)
+                if not can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                    return false
+                end
+            elif contains_name(int_names, "@list:" + target)
+                if not can_emit_list_string_expr(pool, expr_id, int_names)
+                    return false
+                end
+            else
+                return false
+            end
+        elif tag == 7 or tag == 8
+            if not in_loop
+                return false
+            end
+        else
+            return false
+        end
+        i = next_idx
+    end
+    return true
+end
+
+public emit_expr_json(pool: exprs.ExprPool, id: int) -> string
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return "{\"IntLit\":0}"
+    end
+
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 1 -- IntLit
+        const raw = lists.get(pool.str_vals, id)
+        return "{\"IntLit\":" + raw + "}"
+    elif tag == 2 -- StrLit
+        const val = escape_json_str(lists.get(pool.str_vals, id))
+        return "{\"StrLit\":\"" + val + "\"}"
+    elif tag == 3 -- BoolLit
+        const val = lists.get(pool.str_vals, id)
+        return "{\"BoolLit\":" + val + "}"
+    elif tag == 4 -- Var / Ident
+        const name = lists.get(pool.str_vals, id)
+        return "{\"Var\":\"" + name + "\"}"
+    elif tag == 7 -- An empty list is emitted only after the typed binding check.
+        return "{\"EmptyList\":{\"elem_ty\":\"String\"}}"
+    elif tag == 5 -- Binary
+        const left_id = lists.get(pool.left_ids, id)
+        const right_id = lists.get(pool.right_ids, id)
+        const op_str = lists.get(pool.str_vals, id)
+        const left_json = emit_expr_json(pool, left_id)
+        const right_json = emit_expr_json(pool, right_id)
+
+        if op_str == "+"
+            return "{\"Add\":[" + left_json + "," + right_json + "]}"
+        elif op_str == "-"
+            return "{\"Binary\":{\"op\":\"Sub\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "*"
+            return "{\"Binary\":{\"op\":\"Mul\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "/"
+            return "{\"Binary\":{\"op\":\"Div\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "%"
+            return "{\"Binary\":{\"op\":\"Mod\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "and"
+            return "{\"Binary\":{\"op\":\"And\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "or"
+            return "{\"Binary\":{\"op\":\"Or\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "=="
+            return "{\"Binary\":{\"op\":\"Eq\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "!="
+            return "{\"Binary\":{\"op\":\"Ne\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "<"
+            return "{\"Binary\":{\"op\":\"Lt\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == "<="
+            return "{\"Binary\":{\"op\":\"Le\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == ">"
+            return "{\"Binary\":{\"op\":\"Gt\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        elif op_str == ">="
+            return "{\"Binary\":{\"op\":\"Ge\",\"left\":" + left_json + ",\"right\":" + right_json + "}}"
+        else
+            return "{\"Add\":[" + left_json + "," + right_json + "]}"
+        end
+    elif tag == 6 -- Call
+        const callee = lists.get(pool.str_vals, id)
+        const arg_jsons: list[string] = []
+        const start = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        var j = 0
+        while j < count
+            lists.push(arg_jsons, emit_expr_json(pool, lists.get(pool.call_arg_ids, start + j)))
+            j = j + 1
+        end
+        return "{\"Call\":{\"callee\":\"" + callee + "\",\"args\":[" + su.join(arg_jsons, ",") + "]}}"
+    elif tag == 11
+        const cond_json = emit_expr_json(pool, lists.get(pool.left_ids, id))
+        const then_json = emit_expr_json(pool, lists.get(pool.right_ids, id))
+        const else_json = emit_expr_json(pool, lists.get(pool.third_ids, id))
+        return "{\"IfExpr\":{\"cond\":" + cond_json + ",\"then_expr\":" + then_json + ",\"else_expr\":" + else_json + "}}"
+    elif tag == 13
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        const arms: list[string] = []
+        var arm = 0
+        while arm < count
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            var pattern_json = "\"Wildcard\""
+            if pat_id >= 0
+                if lists.get(pool.kind_tags, pat_id) == 1
+                    pattern_json = "{\"IntLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                else
+                    pattern_json = "{\"BoolLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                end
+            end
+            const value = lists.get(pool.call_arg_ids, first + arm + 1)
+            lists.push(arms, "{\"pattern\":" + pattern_json + ",\"body\":" + emit_expr_json(pool, value) + "}")
+            arm = arm + 2
+        end
+        return "{\"MatchExpr\":{\"scrutinee\":" + emit_expr_json(pool, lists.get(pool.left_ids, id)) + ",\"arms\":[" + su.join(arms, ",") + "]}}"
+    end
+
+    return "{\"IntLit\":0}"
+end
+
+escape_json_str(s: string) -> string
+    -- StrLit stores decoded contents, never source delimiters. Copy complete
+    -- UTF-8 spans and encode every ASCII control byte before writing JSON.
+    const data = su.to_bytes(s)
+    const hex = "0123456789abcdef"
+    var escaped = ""
+    var segment_start = 0
+    var pos = 0
+    while pos < bs.len(data)
+        const byte = int(bs.get(data, pos))
+        var replacement = ""
+        if byte == 34
+            replacement = "\\\""
+        elif byte == 92
+            replacement = "\\\\"
+        elif byte == 10
+            replacement = "\\n"
+        elif byte == 13
+            replacement = "\\r"
+        elif byte == 9
+            replacement = "\\t"
+        elif byte < 32
+            replacement = "\\u00" + su.slice(hex, byte / 16, byte / 16 + 1) + su.slice(hex, byte % 16, byte % 16 + 1)
+        end
+        if replacement != ""
+            escaped = escaped + utf8_segment(data, segment_start, pos) + replacement
+            segment_start = pos + 1
+        end
+        pos = pos + 1
+    end
+    return escaped + utf8_segment(data, segment_start, pos)
+end
+
+utf8_segment(data: bytes, start: int, stop_idx: int) -> string
+    match bs.decode_utf8(bs.slice(data, start, stop_idx))
+    case ok(value): return value
+    case err(_): return ""
+    end
+end
+
+public emit_stmt_json(sp: stmts.StmtPool, pool: exprs.ExprPool, id: int) -> string
+    if id < 0 or id >= lists.len(sp.kind_tags)
+        return ""
+    end
+    const empty_names: list[string] = []
+    const empty_rets: list[string] = []
+    const empty_counts: list[int] = []
+    return emit_range_stmts_json(sp, pool, id, lists.get(sp.subtree_ends, id), empty_names, empty_names, empty_rets, empty_counts)
+end
+
+public emit_range_stmts_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, param_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> string
+    if start_idx >= end_idx or start_idx < 0 or end_idx > lists.len(sp.kind_tags)
+        return ""
+    end
+
+    const int_names: list[string] = []
+    const bool_names: list[string] = []
+    const string_names: list[string] = []
+    var param_idx = 0
+    while param_idx < lists.len(param_names)
+        lists.push(int_names, lists.get(param_names, param_idx))
+        param_idx = param_idx + 1
+    end
+    return emit_block_json(sp, pool, start_idx, end_idx, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+end
+
+emit_block_json(sp: stmts.StmtPool, pool: exprs.ExprPool, start_idx: int, end_idx: int, int_names: list[string], bool_names: list[string], string_names: list[string], func_names: list[string], func_ret_tys: list[string], func_param_counts: list[int]) -> string
+    const stmts_out: list[string] = []
+    var i = start_idx
+    while i < end_idx
+        const tag = lists.get(sp.kind_tags, i)
+        const expr_id = lists.get(sp.expr_ids, i)
+        var s = ""
+        if tag == 1
+            const target = lists.get(sp.target_names, i)
+            var ty = "Int"
+            if can_emit_list_string_expr(pool, expr_id, int_names) or lists.get(sp.type_annotations, i) == "list[string]"
+                ty = "{\"List\":\"String\"}"
+                lists.push(int_names, "@list:" + target)
+            elif can_emit_bool_expr(pool, expr_id, int_names, bool_names, func_names, func_ret_tys, func_param_counts)
+                ty = "Bool"
+                lists.push(bool_names, target)
+            elif can_emit_string_expr(pool, expr_id, int_names, bool_names, string_names, func_names, func_ret_tys, func_param_counts)
+                ty = "String"
+                lists.push(string_names, target)
+            else
+                lists.push(int_names, target)
+            end
+            const mutable_json = if lists.get(sp.mutable_flags, i) == 1 then "true" else "false"
+            const ty_json = if ty == "{\"List\":\"String\"}" then ty else "\"" + ty + "\""
+            s = "{\"Let\":{\"name\":\"" + target + "\",\"ty\":" + ty_json + ",\"value\":" + emit_expr_json(pool, expr_id) + ",\"mutable\":" + mutable_json + "}}"
+        elif tag == 2
+            if expr_id == -1
+                s = "{\"Return\":null}"
+            else
+                s = "{\"Return\":" + emit_expr_json(pool, expr_id) + "}"
+            end
+        elif tag == 3
+            s = "{\"Expr\":" + emit_expr_json(pool, expr_id) + "}"
+        elif tag == 4
+            const else_idx = lists.get(sp.branch_starts, i)
+            const subtree_end = lists.get(sp.subtree_ends, i)
+            const then_json = emit_block_json(sp, pool, i + 1, else_idx, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
+            const else_json = emit_block_json(sp, pool, else_idx, subtree_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
+            s = "{\"If\":{\"cond\":" + emit_expr_json(pool, expr_id) + ",\"then_stmts\":[" + then_json + "],\"else_stmts\":[" + else_json + "]}}"
+        elif tag == 5
+            const subtree_end = lists.get(sp.subtree_ends, i)
+            const body_json = emit_block_json(sp, pool, i + 1, subtree_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
+            s = "{\"While\":{\"cond\":" + emit_expr_json(pool, expr_id) + ",\"body_stmts\":[" + body_json + "]}}"
+        elif tag == 9
+            const arms_json: list[string] = []
+            var arm = i + 1
+            const subtree_end = lists.get(sp.subtree_ends, i)
+            while arm < subtree_end
+                var pattern_json = "\"Wildcard\""
+                if lists.get(sp.target_names, arm) != "else"
+                    const pat_id = lists.get(sp.expr_ids, arm)
+                    if lists.get(pool.kind_tags, pat_id) == 1
+                        pattern_json = "{\"IntLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                    else
+                        pattern_json = "{\"BoolLit\":" + lists.get(pool.str_vals, pat_id) + "}"
+                    end
+                end
+                const arm_end = lists.get(sp.subtree_ends, arm)
+                const body_json = emit_block_json(sp, pool, arm + 1, arm_end, copy_names(int_names), copy_names(bool_names), copy_names(string_names), func_names, func_ret_tys, func_param_counts)
+                lists.push(arms_json, "{\"pattern\":" + pattern_json + ",\"body_stmts\":[" + body_json + "]}")
+                arm = arm_end
+            end
+            s = "{\"Match\":{\"scrutinee\":" + emit_expr_json(pool, expr_id) + ",\"arms\":[" + su.join(arms_json, ",") + "]}}"
+        elif tag == 6
+            s = "{\"Assign\":{\"name\":\"" + lists.get(sp.target_names, i) + "\",\"value\":" + emit_expr_json(pool, expr_id) + "}}"
+        elif tag == 7
+            s = "\"Break\""
+        elif tag == 8
+            s = "\"Continue\""
+        end
+        lists.push(stmts_out, s)
+        i = lists.get(sp.subtree_ends, i)
+    end
+    return su.join(stmts_out, ",")
+end
+
+public emit_all_stmts_json(sp: stmts.StmtPool, pool: exprs.ExprPool) -> string
+    const no_names: list[string] = []
+    const no_counts: list[int] = []
+    return emit_range_stmts_json(sp, pool, 0, lists.len(sp.kind_tags), no_names, no_names, no_names, no_counts)
+end

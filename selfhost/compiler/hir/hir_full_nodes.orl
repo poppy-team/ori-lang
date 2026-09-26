@@ -1,0 +1,136 @@
+module selfhost.compiler.hir.hir_full_nodes
+
+import ori.list as lists
+
+-- Full statement vocabulary matching Rust HirStmt (14 variants)
+public enum HirStmtFull
+    LetStmt
+    AssignStmt
+    ReturnStmt
+    BreakStmt
+    ContinueStmt
+    ExprStmt
+    IfStmt
+    WhileStmt
+    ForStmt
+    LoopStmt
+    RepeatStmt
+    MatchStmt
+    UsingStmt
+    CheckStmt
+end
+
+public stmt_tag_to_str(tag: HirStmtFull) -> string
+    match tag
+    case LetStmt: return "let"
+    case AssignStmt: return "assign"
+    case ReturnStmt: return "return"
+    case BreakStmt: return "break"
+    case ContinueStmt: return "continue"
+    case ExprStmt: return "expr"
+    case IfStmt: return "if"
+    case WhileStmt: return "while"
+    case ForStmt: return "for"
+    case LoopStmt: return "loop"
+    case RepeatStmt: return "repeat"
+    case MatchStmt: return "match"
+    case UsingStmt: return "using"
+    case CheckStmt: return "check"
+    end
+    return "unknown"
+end
+
+-- Full pattern vocabulary matching Rust HirPattern (12 variants)
+public enum HirPatternFull
+    PatWildcard
+    PatBinding
+    PatBool
+    PatInt
+    PatStr
+    PatNone
+    PatSome
+    PatOk
+    PatErr
+    PatVariant
+    PatTuple
+    PatOr
+end
+
+public pattern_tag_to_str(pat: HirPatternFull) -> string
+    match pat
+    case PatWildcard: return "wildcard"
+    case PatBinding: return "binding"
+    case PatBool: return "bool"
+    case PatInt: return "int"
+    case PatStr: return "str"
+    case PatNone: return "none"
+    case PatSome: return "some"
+    case PatOk: return "ok"
+    case PatErr: return "err"
+    case PatVariant: return "variant"
+    case PatTuple: return "tuple"
+    case PatOr: return "or"
+    end
+    return "unknown"
+end
+
+-- Full expression vocabulary matching Rust HirExprKind (28 variants)
+public enum HirExprFull
+    ExprBoolLit
+    ExprIntLit
+    ExprFloatLit
+    ExprStrLit
+    ExprBytesLit
+    ExprUnit
+    ExprVar
+    ExprBinary
+    ExprUnary
+    ExprField
+    ExprIndex
+    ExprTupleIndex
+    ExprCall
+    ExprMethodCall
+    ExprStructLit
+    ExprEnumVariant
+    ExprListLit
+    ExprTupleLit
+    ExprStructUpdate
+    ExprSome
+    ExprNone
+    ExprOk
+    ExprErr
+    ExprAwait
+    ExprIf
+    ExprMatch
+    ExprRange
+    ExprClosure
+end
+
+public expr_tag_count() -> int
+    return 28
+end
+
+public struct HirModuleFull
+    stmt_shapes: list[string]
+    pattern_shapes: list[string]
+    expr_shapes: list[string]
+end
+
+public new_full_module() -> HirModuleFull
+    const empty_s: list[string] = []
+    const empty_p: list[string] = []
+    const empty_e: list[string] = []
+    return HirModuleFull {
+        stmt_shapes: empty_s,
+        pattern_shapes: empty_p,
+        expr_shapes: empty_e
+    }
+end
+
+public record_stmt_shape(m: HirModuleFull, tag: HirStmtFull)
+    lists.push(m.stmt_shapes, stmt_tag_to_str(tag))
+end
+
+public recorded_stmt_count(m: HirModuleFull) -> int
+    return lists.len(m.stmt_shapes)
+end

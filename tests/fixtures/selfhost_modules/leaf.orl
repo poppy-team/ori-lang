@@ -1,0 +1,7 @@
+module tests.fixtures.selfhost_modules.leaf
+public twice(n: int) -> int
+    return n + n
+end
+hidden() -> int
+    return 42
+end

@@ -1,8 +1,6 @@
 module app.stats
 
-imports
-    ori.string = str
-end
+import ori.string as str
 
 public struct LogStats
     total: int

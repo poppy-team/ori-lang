@@ -1,0 +1,68 @@
+module selfhost.compiler.frontend.types.test_module3_full
+
+import ori.io as io
+import selfhost.compiler.frontend.types.bidir as bd
+import selfhost.compiler.frontend.types.decision_tree as dt
+import selfhost.compiler.frontend.types.folder as fo
+import selfhost.compiler.frontend.types.monomorph as mo
+import selfhost.compiler.frontend.types.stdlib_full as sf
+import selfhost.compiler.frontend.types.vtable as vt
+
+main()
+    -- 1. Bidir type synth and check
+    const b_ctx = bd.new_bidir_context()
+    const t_int = bd.synth_int_lit(b_ctx)
+    io.println(f"BIDIR_SYNTH_INT: {t_int}")
+    const assign_ok = bd.check_against(b_ctx, 0, 0, "test.expr")
+    io.println(f"BIDIR_CHECK_ASSIGNABLE: {assign_ok}")
+
+    -- 2. Monomorphization table
+    const m_table = mo.new_mono_table()
+    const type_args: list[string] = ["int", "string"]
+    const inst1 = mo.intern_instance(m_table, "Pair", type_args)
+    io.println(f"MONO_FIRST: {inst1}")
+    const inst2 = mo.intern_instance(m_table, "Pair", type_args)
+    io.println(f"MONO_CACHED_EQ: {inst1 == inst2}")
+
+    -- 3. Vtable slot offsets
+    const vt_layout = vt.new_vtable_layout()
+    const slot0 = vt.add_slot(vt_layout, "Drawable", "draw")
+    const slot1 = vt.add_slot(vt_layout, "Drawable", "bounds")
+    io.println(f"VTABLE_SLOT_0: {slot0}")
+    io.println(f"VTABLE_SLOT_1: {slot1}")
+
+    -- 4. Match Decision Tree Exhaustiveness
+    const matrix = dt.new_matrix(false)
+    dt.declare_variant(matrix, "Circle")
+    dt.declare_variant(matrix, "Rectangle")
+    dt.cover_arm(matrix, "Circle")
+    match dt.verify_exhaustiveness(matrix)
+    case some(err_msg):
+        io.println(f"EXHAUST_MISSING_OK: {err_msg}")
+    case none:
+        io.println("EXHAUST_MISSING_FAIL")
+    end
+
+    -- 5. Stdlib Full Catalog
+    const catalog = sf.new_catalog()
+    sf.seed_collections(catalog)
+    sf.seed_strings(catalog)
+    sf.seed_io(catalog)
+    io.println(f"STDLIB_CATALOG_TOTAL: {sf.catalog_count(catalog)}")
+
+    -- 6. Const folder: (2 * 10) + 22 = 42
+    const c_table = fo.new_const_table()
+    const c_2 = fo.alloc_const_expr(c_table, fo.ConstExpr.LitInt(val: 2))
+    const c_10 = fo.alloc_const_expr(c_table, fo.ConstExpr.LitInt(val: 10))
+    const c_22 = fo.alloc_const_expr(c_table, fo.ConstExpr.LitInt(val: 22))
+    const c_mul = fo.alloc_const_expr(c_table, fo.ConstExpr.MulExpr(left_id: c_2, right_id: c_10))
+    const c_add = fo.alloc_const_expr(c_table, fo.ConstExpr.AddExpr(left_id: c_mul, right_id: c_22))
+    match fo.fold_const(c_table, c_add)
+    case some(folded):
+        io.println(f"CONST_FOLD_RESULT: {folded}")
+    case none:
+        io.println("CONST_FOLD_FAIL")
+    end
+
+    io.println("MODULE3_ALL_TESTS_SUCCESS")
+end

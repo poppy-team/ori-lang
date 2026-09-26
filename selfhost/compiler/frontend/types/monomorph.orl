@@ -1,0 +1,67 @@
+module selfhost.compiler.frontend.types.monomorph
+
+import ori.list as lists
+
+public struct MonoEntry
+    generic_name: string
+    type_args: list[string]
+    concrete_name: string
+end
+
+public struct MonoTable
+    generic_names: list[string]
+    arg_shapes: list[string]
+    concrete_names: list[string]
+end
+
+public new_mono_table() -> MonoTable
+    const empty_g: list[string] = []
+    const empty_a: list[string] = []
+    const empty_c: list[string] = []
+    return MonoTable {
+        generic_names: empty_g,
+        arg_shapes: empty_a,
+        concrete_names: empty_c
+    }
+end
+
+public intern_instance(table: MonoTable, generic_name: string, type_args: list[string]) -> string
+    const shape = shapecode(type_args)
+    var i = 0
+    const count = lists.len(table.generic_names)
+    while i < count
+        if lists.get(table.generic_names, i) == generic_name and lists.get(table.arg_shapes, i) == shape
+            return lists.get(table.concrete_names, i)
+        end
+        i = i + 1
+    end
+    const concrete = f"{generic_name}__{count}"
+    lists.push(table.generic_names, generic_name)
+    lists.push(table.arg_shapes, shape)
+    lists.push(table.concrete_names, concrete)
+    return concrete
+end
+
+shapecode(args: list[string]) -> string
+    const joined = args_join(args)
+    return joined
+end
+
+args_join(args: list[string]) -> string
+    var out = ""
+    var i = 0
+    const count = lists.len(args)
+    while i < count
+        if i == 0
+            out = lists.get(args, i)
+        else
+            out = out + "," + lists.get(args, i)
+        end
+        i = i + 1
+    end
+    return out
+end
+
+public mono_count(table: MonoTable) -> int
+    return lists.len(table.generic_names)
+end

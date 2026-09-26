@@ -145,6 +145,10 @@ Runtime-backed collections must define:
 
 Managed iterators retain the underlying collection when their contract requires it and release that ownership exactly once.
 
+The runtime's `ori_list_get` returns a borrowed element. A generated Ori
+`ori.list.get` call retains a managed result before releasing temporary
+arguments, so the caller owns its result independently of the list edge.
+
 ## Scoped memory arenas (`OriRegion`)
 
 For performance-critical code requiring rapid temporary allocation (game loop frames, visibility culling, command batches), the runtime provides `OriRegion` bump arenas (`mem.region` in stdlib):

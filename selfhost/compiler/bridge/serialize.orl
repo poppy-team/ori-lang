@@ -1,0 +1,71 @@
+module selfhost.compiler.bridge.serialize
+
+import ori.heap as heap
+import ori.string as su
+
+public newtype RequestId = int
+public newtype ProtocolVersion = int
+
+public alias SerializeResult = result[string, string]
+
+public struct BridgeEnvelope
+    protocol_version: int
+    request_id: int
+    command: string
+    payload_text: string
+end
+
+public make_envelope(
+    version: ProtocolVersion,
+    id: RequestId,
+    command: string,
+    payload_json: string
+) -> BridgeEnvelope
+    const v: int = int(version)
+    const r: int = int(id)
+    return BridgeEnvelope {
+        protocol_version: v,
+        request_id: r,
+        command: command,
+        payload_text: payload_json
+    }
+end
+
+public envelope_to_json(env: BridgeEnvelope) -> SerializeResult
+    const fields: list[string] = [
+        "\"protocol_version\":" + int_to_string(env.protocol_version),
+        "\"request_id\":" + int_to_string(env.request_id),
+        "\"command\":" + quoted(env.command),
+        "\"payload\":" + env.payload_text
+    ]
+    return ok("{" + su.join(fields, ",") + "}")
+end
+
+public serialize_function_json(name: string, ret_ty: string, body_json: string) -> string
+    return f"{{\"name\":\"{name}\",\"params\":[],\"return_ty\":\"{ret_ty}\",\"body_stmts\":[{body_json}],\"is_public\":true}}"
+end
+
+public serialize_let_json(name: string, val_expr_json: string) -> string
+    return f"{{\"Let\":{{\"name\":\"{name}\",\"ty\":\"Int\",\"value\":{val_expr_json}}}}}"
+end
+
+public serialize_int_lit_json(val: int) -> string
+    return f"{{\"IntLit\":{val}}}"
+end
+
+public serialize_compile_request_json(ns: string, funcs_json: string, out_path: string) -> string
+    return f"{{\"module\":{{\"namespace\":\"{ns}\",\"funcs\":[{funcs_json}]}},\"output_path\":\"{out_path}\",\"lib_mode\":true}}"
+end
+
+int_to_string(n: int) -> string
+    return f"{n}"
+end
+
+quoted(s: string) -> string
+    return "\"" + s + "\""
+end
+
+public sort_keys(keys: list[string]) -> list[string]
+    const h = heap.from_list(keys)
+    return heap.into_sorted_list(h)
+end

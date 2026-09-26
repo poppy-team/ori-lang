@@ -1,0 +1,122 @@
+module selfhost.compiler.frontend.parse.parse_pat
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+
+public struct PatPool
+    patterns: list[node.PatternNode]
+end
+
+public new_pat_pool() -> PatPool
+    const empty_pats: list[node.PatternNode] = []
+    return PatPool { patterns: empty_pats }
+end
+
+public alloc_pat(pool: PatPool, kind: node.PatternKind, span: tok.Span) -> int
+    const id = lists.len(pool.patterns)
+    lists.push(pool.patterns, node.PatternNode {
+        id: node.NodeId(id),
+        kind: kind,
+        span: span
+    })
+    return id
+end
+
+public struct ParsePatOut
+    pat_id: int
+    next_cursor: int
+end
+
+public parse_pattern(tokens: list[tok.Token], cursor: int, pool: PatPool) -> optional[ParsePatOut]
+    if cursor >= lists.len(tokens)
+        return none
+    end
+
+    const t = lists.get(tokens, cursor)
+    match t.kind
+    case Ident(name):
+        const var_name = name
+        if var_name == "_"
+            const id = alloc_pat(pool, node.PatternKind.Wildcard, t.span)
+            return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+        end
+
+        -- Check variant payload `Variant(field)`
+        if cursor + 1 < lists.len(tokens)
+            const next_tok = lists.get(tokens, cursor + 1)
+            match next_tok.kind
+            case LParen:
+                const sub_ids: list[int] = []
+                var cur = cursor + 2
+                while cur < lists.len(tokens)
+                    const inner = lists.get(tokens, cur)
+                    match inner.kind
+                    case RParen:
+                        const id = alloc_pat(pool, node.PatternKind.Variant(
+                            type_name: "infer",
+                            variant: var_name,
+                            sub_pat_ids: sub_ids
+                        ), t.span)
+                        return some(ParsePatOut { pat_id: id, next_cursor: cur + 1 })
+                    case Comma:
+                        cur = cur + 1
+                    case else:
+                        match parse_pattern(tokens, cur, pool)
+                        case some(sub_out):
+                            lists.push(sub_ids, sub_out.pat_id)
+                            cur = sub_out.next_cursor
+                        case none:
+                            return none
+                        end
+                    end
+                end
+                return none
+            case else:
+                const id = alloc_pat(pool, node.PatternKind.Bind(name: var_name), t.span)
+                return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+            end
+        end
+        const id = alloc_pat(pool, node.PatternKind.Bind(name: var_name), t.span)
+        return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+    case IntLit(raw):
+        const lit = node.LiteralKind.Int(raw: raw)
+        const id = alloc_pat(pool, node.PatternKind.Literal(lit: lit), t.span)
+        return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+    case StrLit(value):
+        const lit = node.LiteralKind.Str(val: value)
+        const id = alloc_pat(pool, node.PatternKind.Literal(lit: lit), t.span)
+        return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+    case True:
+        const lit = node.LiteralKind.Bool(val: true)
+        const id = alloc_pat(pool, node.PatternKind.Literal(lit: lit), t.span)
+        return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+    case False:
+        const lit = node.LiteralKind.Bool(val: false)
+        const id = alloc_pat(pool, node.PatternKind.Literal(lit: lit), t.span)
+        return some(ParsePatOut { pat_id: id, next_cursor: cursor + 1 })
+    case LBrace:
+        -- Struct destructuring: { a, b } or { a: x, b: y }
+        const field_pat_ids: list[int] = []
+        var b_cur = cursor + 1
+        while b_cur < lists.len(tokens)
+            const b_tok = lists.get(tokens, b_cur)
+            match b_tok.kind
+            case RBrace:
+                const id = alloc_pat(pool, node.PatternKind.Tuple(sub_pat_ids: field_pat_ids), t.span)
+                return some(ParsePatOut { pat_id: id, next_cursor: b_cur + 1 })
+            case Comma:
+                b_cur = b_cur + 1
+            case Ident(name):
+                const bind_id = alloc_pat(pool, node.PatternKind.Bind(name: name), b_tok.span)
+                lists.push(field_pat_ids, bind_id)
+                b_cur = b_cur + 1
+            case else:
+                return none
+            end
+        end
+        return none
+    case else:
+        return none
+    end
+end

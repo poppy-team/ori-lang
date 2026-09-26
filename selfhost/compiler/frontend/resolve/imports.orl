@@ -1,0 +1,46 @@
+module selfhost.compiler.frontend.resolve.imports
+
+import ori.list as lists
+import ori.string as su
+
+public struct ImportMapping
+    alias_names: list[string]
+    target_paths: list[string]
+end
+
+public new_mapping() -> ImportMapping
+    const empty_aliases: list[string] = []
+    const empty_paths: list[string] = []
+    return ImportMapping {
+        alias_names: empty_aliases,
+        target_paths: empty_paths
+    }
+end
+
+public register_import(mapping: ImportMapping, alias_name: string, target_path: string)
+    lists.push(mapping.alias_names, alias_name)
+    lists.push(mapping.target_paths, target_path)
+end
+
+public resolve_alias(mapping: ImportMapping, alias_name: string) -> optional[string]
+    var i = 0
+    const count = lists.len(mapping.alias_names)
+    while i < count
+        const cur = lists.get(mapping.alias_names, i)
+        if cur == alias_name
+            return some(lists.get(mapping.target_paths, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public module_to_file_path(base_dir: string, module_path: string) -> string
+    if su.starts_with(module_path, "ori.")
+        const stdlib_name = su.slice(module_path, 4, su.len(module_path))
+        const relative_stdlib = su.replace(stdlib_name, ".", "/")
+        return f"{base_dir}/stdlib/{relative_stdlib}.orl"
+    end
+    const relative = su.replace(module_path, ".", "/")
+    return f"{base_dir}/{relative}.orl"
+end

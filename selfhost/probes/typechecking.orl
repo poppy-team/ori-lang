@@ -1,0 +1,49 @@
+module selfhost.probes.typechecking
+
+import ori.io as io
+
+trait Describable
+    describe(self) -> string
+end
+
+struct Circle
+    radius: int
+end
+
+apply Circle: Describable
+    describe(self) -> string
+        return f"Circle({self.radius})"
+    end
+end
+
+identity(value: int) -> int
+    return value
+end
+
+safe_div(a: int, b: int) -> result[int, string]
+    if b == 0
+        return err("division by zero")
+    else
+        return ok(a / b)
+    end
+end
+
+main()
+    const c: Circle = Circle { radius: 5 }
+    io.println(f"PROBE_OK trait={c.describe()}")
+    io.println(f"PROBE_OK generic={identity(41) + 1}")
+
+    match safe_div(10, 2)
+    case ok(v):
+        io.println(f"PROBE_OK result_ok={v}")
+    case err(e):
+        io.println(f"PROBE_FAIL {e}")
+    end
+
+    match safe_div(1, 0)
+    case ok(v):
+        io.println(f"PROBE_FAIL unexpected {v}")
+    case err(e):
+        io.println(f"PROBE_OK result_err={e}")
+    end
+end

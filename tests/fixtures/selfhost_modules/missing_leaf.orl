@@ -1,0 +1,4 @@
+module tests.fixtures.selfhost_modules.missing_leaf
+import tests.fixtures.selfhost_modules.missing_child as child
+main()
+end

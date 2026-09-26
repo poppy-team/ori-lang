@@ -1,10 +1,8 @@
 module app.async_demo
 
 -- Minimal async/await. For FS async see `async_io`.
-imports
-    ori.io = io
-    ori.task = task
-end
+import ori.io as io
+import ori.task as task
 
 async delayed_answer() -> int
     await task.sleep(1)

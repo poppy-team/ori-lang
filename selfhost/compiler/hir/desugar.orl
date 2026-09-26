@@ -1,0 +1,43 @@
+module selfhost.compiler.hir.desugar
+
+import ori.list as lists
+
+public struct DesugaredLoop
+    iterator_var: string
+    index_var: string
+    condition_expr: string
+    body_stmt_names: list[string]
+end
+
+public desugar_for_range(loop_var: string, start_val: int, end_val: int) -> DesugaredLoop
+    const stmts: list[string] = []
+    lists.push(stmts, f"{loop_var} = {loop_var} + 1")
+    return DesugaredLoop {
+        iterator_var: loop_var,
+        index_var: f"_idx_{loop_var}",
+        condition_expr: f"{loop_var} < {end_val}",
+        body_stmt_names: stmts
+    }
+end
+
+public struct DesugaredUnwrap
+    binding_name: string
+    inner_ty: string
+    is_ok_branch: bool
+end
+
+public desugar_if_ok(binding: string, ty: string) -> DesugaredUnwrap
+    return DesugaredUnwrap {
+        binding_name: binding,
+        inner_ty: ty,
+        is_ok_branch: true
+    }
+end
+
+public desugar_if_err(binding: string, ty: string) -> DesugaredUnwrap
+    return DesugaredUnwrap {
+        binding_name: binding,
+        inner_ty: ty,
+        is_ok_branch: false
+    }
+end

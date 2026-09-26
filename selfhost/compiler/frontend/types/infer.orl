@@ -1,0 +1,43 @@
+module selfhost.compiler.frontend.types.infer
+
+import ori.list as lists
+import selfhost.compiler.frontend.types.unify as uni
+
+public struct InferContext
+    errors: list[string]
+end
+
+public new_infer_context() -> InferContext
+    const errs: list[string] = []
+    return InferContext {
+        errors: errs
+    }
+end
+
+public literal_int_type(ctx: InferContext) -> int
+    return 0
+end
+
+public check_assignable(ctx: InferContext, pool: uni.TypePool, expected_id: int, actual_id: int) -> bool
+    const outcome = uni.unify(pool, expected_id, actual_id)
+    match outcome
+    case ok(_):
+        return true
+    case err(msg):
+        lists.push(ctx.errors, msg)
+        return false
+    end
+end
+
+public infer_binary_int(ctx: InferContext, pool: uni.TypePool, left_id: int, right_id: int) -> int
+    const left_ok = check_assignable(ctx, pool, 0, left_id)
+    const right_ok = check_assignable(ctx, pool, 0, right_id)
+    if left_ok and right_ok
+        return 0
+    end
+    return -1
+end
+
+public check_error_count(ctx: InferContext) -> int
+    return lists.len(ctx.errors)
+end

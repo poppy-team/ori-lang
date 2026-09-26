@@ -1,0 +1,42 @@
+module selfhost.compiler.hir.test_lower
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_item as pi
+import selfhost.compiler.hir.lower as lo
+
+main()
+    const func_src = "identity(value: int) -> int"
+    const func_tokens = lex.tokenize_all(func_src)
+    const func_parser = pi.new_parser(func_tokens)
+    const func_out = pi.parse_func_signature(func_parser, 10)
+
+    const struct_src = "struct Point x: int y: int end"
+    const struct_tokens = lex.tokenize_all(struct_src)
+    const struct_parser = pi.new_parser(struct_tokens)
+    const struct_out = pi.parse_struct(struct_parser, 20)
+
+    const ctx = lo.new_lower_context("test.module")
+
+    match func_out.item
+    case some(item):
+        lo.lower_item(ctx, item)
+        io.println("LOWER_FUNC_ACCEPTED")
+    case none:
+        io.println("LOWER_FUNC_FAIL")
+    end
+
+    match struct_out.item
+    case some(item):
+        lo.lower_item(ctx, item)
+        io.println("LOWER_STRUCT_IGNORED")
+    case none:
+        io.println("LOWER_STRUCT_FAIL")
+    end
+
+    io.println(f"HIR_FUNC_COUNT: {lo.module_func_count(ctx)}")
+    const lowered_name = lists.get(ctx.module_ir.func_names, 0)
+    io.println(f"HIR_FIRST_FUNC: {lowered_name}")
+    io.println("HIR_ALL_PASSED")
+end

@@ -1,0 +1,488 @@
+module selfhost.compiler.frontend.types.type_engine
+
+import ori.list as lists
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+
+public struct TypeEnv
+    binding_names: list[string]
+    binding_ty_tags: list[int]
+    binding_mutable: list[int]
+end
+
+public new_env() -> TypeEnv
+    const empty_n: list[string] = []
+    const empty_t: list[int] = []
+    const empty_m: list[int] = []
+    return TypeEnv {
+        binding_names: empty_n,
+        binding_ty_tags: empty_t,
+        binding_mutable: empty_m
+    }
+end
+
+public infer_expr_tag(pool: exprs.ExprPool, id: int) -> int
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    return infer_expr_tag_in_env(new_env(), pool, id, no_names, no_returns)
+end
+
+public infer_expr_tag_in_env(env: TypeEnv, pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string]) -> int
+    -- Returns canonical type tag: 0=unknown, 1=int, 2=string, 3=bool, 4=void, 5=list[string], 6=list[int].
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return 0
+    end
+
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 1
+        return 1
+    elif tag == 2
+        return 2
+    elif tag == 3
+        return 3
+    elif tag == 4 -- Resolve only bindings already visible in this function.
+        const name = lists.get(pool.str_vals, id)
+        var i = lists.len(env.binding_names) - 1
+        while i >= 0
+            if name == lists.get(env.binding_names, i)
+                return lists.get(env.binding_ty_tags, i)
+            end
+            i = i - 1
+        end
+        return 0
+    elif tag == 5
+        const op = lists.get(pool.str_vals, id)
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" or op == "and" or op == "or"
+            return 3
+        end
+        const left_id = lists.get(pool.left_ids, id)
+        return infer_expr_tag_in_env(env, pool, left_id, func_names, func_ret_tys)
+    elif tag == 6
+        const callee = lists.get(pool.str_vals, id)
+        if callee == "ori.args.all" or callee == "ori.os.args"
+            return 5
+        end
+        if callee == "ori.list.len"
+            return 1
+        end
+        if callee == "ori.list.get" and lists.get(pool.call_arg_counts, id) == 2
+            const first = lists.get(pool.call_arg_starts, id)
+            const source_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first), func_names, func_ret_tys)
+            if source_ty == 5
+                return 2
+            elif source_ty == 6
+                return 1
+            end
+        end
+        var fn_idx = 0
+        while fn_idx < lists.len(func_names)
+            if callee == lists.get(func_names, fn_idx)
+                return type_str_to_tag(lists.get(func_ret_tys, fn_idx))
+            end
+            fn_idx = fn_idx + 1
+        end
+    elif tag == 11
+        const condition_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        const then_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+        const else_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.third_ids, id), func_names, func_ret_tys)
+        if condition_ty == 3 and then_ty == else_ty
+            return then_ty
+        end
+    elif tag == 13
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        if count < 2 or count % 2 != 0 or (scrutinee_ty != 1 and scrutinee_ty != 3)
+            return 0
+        end
+        var result_ty = 0
+        var arm = 0
+        while arm < count
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            if pat_id >= 0 and infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys) != scrutinee_ty
+                return 0
+            end
+            const body_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first + arm + 1), func_names, func_ret_tys)
+            if body_ty == 0 or (result_ty != 0 and result_ty != body_ty)
+                return 0
+            end
+            result_ty = body_ty
+            arm = arm + 2
+        end
+        return result_ty
+    end
+    return 0
+end
+
+public type_str_to_tag(ty: string) -> int
+    -- 1=int, 2=string, 3=bool, 4=void, 0=other/unresolved
+    if ty == "int" or ty == "i8" or ty == "i16" or ty == "i32" or ty == "i64"
+        return 1
+    elif ty == "u8" or ty == "u16" or ty == "u32" or ty == "u64"
+        return 1
+    elif ty == "string"
+        return 2
+    elif ty == "bool"
+        return 3
+    elif ty == "void"
+        return 4
+    elif ty == "list[string]"
+        return 5
+    elif ty == "list[int]"
+        return 6
+    end
+    return 0
+end
+
+check_match_expr_in_env(env: TypeEnv, sink: ds.DiagnosticSink, pool: exprs.ExprPool, id: int, func_names: list[string], func_ret_tys: list[string])
+    if id < 0 or id >= lists.len(pool.kind_tags)
+        return
+    end
+    const tag = lists.get(pool.kind_tags, id)
+    if tag == 5
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+    elif tag == 6
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        var arg = 0
+        while arg < count
+            check_match_expr_in_env(env, sink, pool, lists.get(pool.call_arg_ids, first + arg), func_names, func_ret_tys)
+            arg = arg + 1
+        end
+        const callee = lists.get(pool.str_vals, id)
+        if callee == "ori.args.all" or callee == "ori.os.args"
+            if count != 0
+                ds.emit_error(sink, "type.arg_count_mismatch", "argument list function takes no arguments", "remove the arguments")
+            end
+        elif callee == "ori.list.len" or callee == "ori.list.get" or callee == "ori.list.push"
+            const expected = if callee == "ori.list.len" then 1 else 2
+            if count != expected
+                ds.emit_error(sink, "type.arg_count_mismatch", "wrong number of list arguments", "pass a list and the required value or index")
+            else
+                const first_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first), func_names, func_ret_tys)
+                if first_ty != 5 and first_ty != 6
+                    ds.emit_error(sink, "type.arg_type_mismatch", "list operation requires a typed list", "pass a list binding")
+                end
+                if count == 2
+                    const value_ty = infer_expr_tag_in_env(env, pool, lists.get(pool.call_arg_ids, first + 1), func_names, func_ret_tys)
+                    var required_ty = 1
+                    if callee == "ori.list.push" and first_ty == 5
+                        required_ty = 2
+                    end
+                    if value_ty != 0 and value_ty != required_ty
+                        ds.emit_error(sink, "type.arg_type_mismatch", "list argument has the wrong type", "use an index or element matching the list type")
+                    end
+                end
+            end
+        end
+    elif tag == 11
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.left_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.right_ids, id), func_names, func_ret_tys)
+        check_match_expr_in_env(env, sink, pool, lists.get(pool.third_ids, id), func_names, func_ret_tys)
+    elif tag == 13
+        const scrutinee_id = lists.get(pool.left_ids, id)
+        check_match_expr_in_env(env, sink, pool, scrutinee_id, func_names, func_ret_tys)
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, scrutinee_id, func_names, func_ret_tys)
+        if scrutinee_ty != 1 and scrutinee_ty != 3
+            ds.emit_error(sink, "type.match_scrutinee", "match expression needs an integer or boolean", "use a supported scalar")
+        end
+        const first = lists.get(pool.call_arg_starts, id)
+        const count = lists.get(pool.call_arg_counts, id)
+        if first < 0 or count < 2 or count % 2 != 0
+            ds.emit_error(sink, "type.invalid_match_arm", "match expression has no complete arms", "add case pattern: value")
+            return
+        end
+        var seen_wildcard = false
+        var seen_true = false
+        var seen_false = false
+        const seen_ints: list[string] = []
+        var result_ty = 0
+        var arm = 0
+        while arm < count
+            if seen_wildcard
+                ds.emit_error(sink, "type.unreachable_match_arm", "case follows a wildcard", "move the wildcard to the last case")
+            end
+            const pat_id = lists.get(pool.call_arg_ids, first + arm)
+            if pat_id == -1
+                seen_wildcard = true
+            elif pat_id >= 0 and pat_id < lists.len(pool.kind_tags)
+                const pat_ty = infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys)
+                if scrutinee_ty != 0 and pat_ty != scrutinee_ty
+                    ds.emit_error(sink, "type.match_pattern_mismatch", "pattern and scrutinee have different types", "use a pattern with the same type")
+                end
+                if lists.get(pool.kind_tags, pat_id) == 1
+                    const raw = lists.get(pool.str_vals, pat_id)
+                    var j = 0
+                    while j < lists.len(seen_ints)
+                        if raw == lists.get(seen_ints, j)
+                            ds.emit_error(sink, "type.duplicate_match_arm", "duplicate integer pattern", "remove the repeated case")
+                        end
+                        j = j + 1
+                    end
+                    lists.push(seen_ints, raw)
+                elif lists.get(pool.str_vals, pat_id) == "true"
+                    if seen_true
+                        ds.emit_error(sink, "type.duplicate_match_arm", "duplicate true pattern", "remove the repeated case")
+                    end
+                    seen_true = true
+                elif lists.get(pool.str_vals, pat_id) == "false"
+                    if seen_false
+                        ds.emit_error(sink, "type.duplicate_match_arm", "duplicate false pattern", "remove the repeated case")
+                    end
+                    seen_false = true
+                end
+            else
+                ds.emit_error(sink, "type.invalid_match_arm", "invalid match pattern", "use a scalar pattern")
+            end
+            const body_id = lists.get(pool.call_arg_ids, first + arm + 1)
+            check_match_expr_in_env(env, sink, pool, body_id, func_names, func_ret_tys)
+            const body_ty = infer_expr_tag_in_env(env, pool, body_id, func_names, func_ret_tys)
+            if body_ty != 0 and result_ty != 0 and body_ty != result_ty
+                ds.emit_error(sink, "type.match_result_mismatch", "match arms have different result types", "return one common type")
+            end
+            if result_ty == 0
+                result_ty = body_ty
+            end
+            arm = arm + 2
+        end
+        if not seen_wildcard and (scrutinee_ty == 1 or (scrutinee_ty == 3 and (not seen_true or not seen_false)))
+            ds.emit_error(sink, "type.nonexhaustive_match", "match expression does not cover every value", "add case else: or both Boolean values")
+        end
+    end
+end
+
+public check_stmt_with_expected(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    stmt_id: int,
+    expected_ret_tag: int,
+    func_names: list[string],
+    func_ret_tys: list[string]
+)
+    if stmt_id < 0 or stmt_id >= lists.len(sp.kind_tags)
+        return
+    end
+
+    const tag = lists.get(sp.kind_tags, stmt_id)
+    const expr_id = lists.get(sp.expr_ids, stmt_id)
+    const target = lists.get(sp.target_names, stmt_id)
+    check_match_expr_in_env(env, sink, pool, expr_id, func_names, func_ret_tys)
+
+    if tag == 1 -- Const / Let
+        const inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        const declared = lists.get(sp.type_annotations, stmt_id)
+        const declared_tag = type_str_to_tag(declared)
+        if declared != "" and declared_tag != 0 and inferred != 0 and declared_tag != inferred
+            ds.emit_error(sink, "type.type_mismatch", "binding type does not match its annotation: " + target, "use a value of the declared type")
+        end
+        lists.push(env.binding_names, target)
+        const binding_ty = if inferred == 0 and expr_id >= 0 and lists.get(pool.kind_tags, expr_id) == 7 then declared_tag else inferred
+        lists.push(env.binding_ty_tags, binding_ty)
+        lists.push(env.binding_mutable, lists.get(sp.mutable_flags, stmt_id))
+    elif tag == 2 -- Return: check against expected_ret_tag
+        const ret_inferred = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        if expected_ret_tag != 0 and ret_inferred != 0
+            if expected_ret_tag != ret_inferred
+                ds.emit_error(sink, "type.return_mismatch", "returned expression type does not match function signature", "adjust the returned value or the declared return type")
+            end
+        end
+    elif tag == 3 -- Expr
+        infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+    elif tag == 6 -- Assignment to an existing mutable local.
+        var index = lists.len(env.binding_names) - 1
+        var found = false
+        while index >= 0
+            if target == lists.get(env.binding_names, index)
+                found = true
+                if lists.get(env.binding_mutable, index) != 1
+                    ds.emit_error(sink, "type.assign_const", "assignment to immutable binding: " + target, "declare the binding with var")
+                end
+                const value_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+                if value_ty != 0 and value_ty != lists.get(env.binding_ty_tags, index)
+                    ds.emit_error(sink, "type.type_mismatch", "assignment type does not match binding: " + target, "assign a value of the declared type")
+                end
+                break
+            end
+            index = index - 1
+        end
+        if not found
+            ds.emit_error(sink, "name.undefined", "assignment to undefined binding: " + target, "declare the binding before assignment")
+        end
+    elif tag == 4 or tag == 5 -- If / While
+        const cond_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        if cond_ty != 3 and cond_ty != 0
+            ds.emit_error(sink, "type.condition_not_bool", "condition must be of bool type", "wrap with comparison or boolean call")
+        end
+    elif tag == 9 -- Scalar match scrutinee.
+        const scrutinee_ty = infer_expr_tag_in_env(env, pool, expr_id, func_names, func_ret_tys)
+        if scrutinee_ty != 0 and scrutinee_ty != 1 and scrutinee_ty != 3
+            ds.emit_error(sink, "type.match_scrutinee", "match requires an integer or boolean scrutinee", "use a supported scalar match")
+        end
+    end
+end
+
+public check_stmt(env: TypeEnv, sink: ds.DiagnosticSink, sp: stmts.StmtPool, pool: exprs.ExprPool, stmt_id: int)
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    check_stmt_with_expected(env, sink, sp, pool, stmt_id, 0, no_names, no_returns)
+end
+
+public check_all_statements(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool
+) -> int
+    return check_function_statements(env, sink, sp, pool, "void")
+end
+
+public check_function_statements(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    fn_ret_ty: string
+) -> int
+    return check_function_statement_range(env, sink, sp, pool, 0, lists.len(sp.kind_tags), fn_ret_ty)
+end
+
+public check_function_statement_range(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    first_stmt: int,
+    last_stmt: int,
+    fn_ret_ty: string
+) -> int
+    const no_names: list[string] = []
+    const no_returns: list[string] = []
+    return check_function_statement_range_in_module(env, sink, sp, pool, first_stmt, last_stmt, fn_ret_ty, no_names, no_returns)
+end
+
+public check_function_statement_range_in_module(
+    env: TypeEnv,
+    sink: ds.DiagnosticSink,
+    sp: stmts.StmtPool,
+    pool: exprs.ExprPool,
+    first_stmt: int,
+    last_stmt: int,
+    fn_ret_ty: string,
+    func_names: list[string],
+    func_ret_tys: list[string]
+) -> int
+    const expected_ret_tag = type_str_to_tag(fn_ret_ty)
+    check_block(env, sink, sp, pool, first_stmt, last_stmt, expected_ret_tag, func_names, func_ret_tys, false)
+    return ds.error_count(sink)
+end
+
+clone_env(env: TypeEnv) -> TypeEnv
+    const out = new_env()
+    var i = 0
+    while i < lists.len(env.binding_names)
+        lists.push(out.binding_names, lists.get(env.binding_names, i))
+        lists.push(out.binding_ty_tags, lists.get(env.binding_ty_tags, i))
+        lists.push(out.binding_mutable, lists.get(env.binding_mutable, i))
+        i = i + 1
+    end
+    return out
+end
+
+check_block(env: TypeEnv, sink: ds.DiagnosticSink, sp: stmts.StmtPool, pool: exprs.ExprPool, first_stmt: int, last_stmt: int, expected_ret_tag: int, func_names: list[string], func_ret_tys: list[string], in_loop: bool)
+    var i = first_stmt
+    while i < last_stmt
+        const tag = lists.get(sp.kind_tags, i)
+        check_stmt_with_expected(env, sink, sp, pool, i, expected_ret_tag, func_names, func_ret_tys)
+        const subtree_end = lists.get(sp.subtree_ends, i)
+        if tag == 4
+            const else_start = lists.get(sp.branch_starts, i)
+            check_block(clone_env(env), sink, sp, pool, i + 1, else_start, expected_ret_tag, func_names, func_ret_tys, in_loop)
+            check_block(clone_env(env), sink, sp, pool, else_start, subtree_end, expected_ret_tag, func_names, func_ret_tys, in_loop)
+        elif tag == 5
+            check_block(clone_env(env), sink, sp, pool, i + 1, subtree_end, expected_ret_tag, func_names, func_ret_tys, true)
+        elif tag == 9
+            const scrutinee_ty = infer_expr_tag_in_env(env, pool, lists.get(sp.expr_ids, i), func_names, func_ret_tys)
+            var arm = i + 1
+            var arm_count = 0
+            var has_wildcard = false
+            var has_true = false
+            var has_false = false
+            const int_patterns: list[string] = []
+            while arm < subtree_end
+                if lists.get(sp.kind_tags, arm) != 10
+                    ds.emit_error(sink, "type.invalid_match_arm", "invalid match arm", "use case pattern: body")
+                    break
+                end
+                if has_wildcard
+                    ds.emit_error(sink, "type.unreachable_match_arm", "case follows a wildcard", "move the wildcard to the last case")
+                end
+                const pat_id = lists.get(sp.expr_ids, arm)
+                if pat_id >= 0
+                    const pat_ty = infer_expr_tag_in_env(env, pool, pat_id, func_names, func_ret_tys)
+                    if scrutinee_ty != 0 and pat_ty != 0 and pat_ty != scrutinee_ty
+                        ds.emit_error(sink, "type.match_pattern_mismatch", "pattern and scrutinee have different types", "use a pattern with the same type")
+                    end
+                    const pat_tag = lists.get(pool.kind_tags, pat_id)
+                    if pat_tag == 1
+                        const raw = lists.get(pool.str_vals, pat_id)
+                        var seen = false
+                        var pat_idx = 0
+                        while pat_idx < lists.len(int_patterns)
+                            if raw == lists.get(int_patterns, pat_idx)
+                                seen = true
+                            end
+                            pat_idx = pat_idx + 1
+                        end
+                        if seen
+                            ds.emit_error(sink, "type.duplicate_match_arm", "duplicate integer pattern", "remove the repeated case")
+                        end
+                        lists.push(int_patterns, raw)
+                    elif pat_tag == 3
+                        if lists.get(pool.str_vals, pat_id) == "true"
+                            if has_true
+                                ds.emit_error(sink, "type.duplicate_match_arm", "duplicate true pattern", "remove the repeated case")
+                            end
+                            has_true = true
+                        end
+                        if lists.get(pool.str_vals, pat_id) == "false"
+                            if has_false
+                                ds.emit_error(sink, "type.duplicate_match_arm", "duplicate false pattern", "remove the repeated case")
+                            end
+                            has_false = true
+                        end
+                    end
+                else
+                    has_wildcard = true
+                end
+                const arm_end = lists.get(sp.subtree_ends, arm)
+                if arm_end <= arm or arm_end > subtree_end
+                    ds.emit_error(sink, "type.invalid_match_arm", "invalid match arm range", "check the case body")
+                    break
+                end
+                check_block(clone_env(env), sink, sp, pool, arm + 1, arm_end, expected_ret_tag, func_names, func_ret_tys, in_loop)
+                arm_count = arm_count + 1
+                arm = arm_end
+            end
+            if arm_count == 0 or (not has_wildcard and (scrutinee_ty == 1 or (scrutinee_ty == 3 and (not has_true or not has_false))))
+                ds.emit_error(sink, "type.nonexhaustive_match", "match does not cover every value", "add a final case else: or cover both Boolean values")
+            end
+        elif tag == 7 or tag == 8
+            if not in_loop
+                ds.emit_error(sink, "type.loop_control_outside_loop", "break or continue outside a loop", "use break or continue inside while")
+            end
+        end
+        if subtree_end <= i
+            i = i + 1
+        else
+            i = subtree_end
+        end
+    end
+end
+
+public binding_count(env: TypeEnv) -> int
+    return lists.len(env.binding_names)
+end

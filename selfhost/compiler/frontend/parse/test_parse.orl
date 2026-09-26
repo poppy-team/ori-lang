@@ -1,0 +1,52 @@
+module selfhost.compiler.frontend.parse.test_parse
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_item as pi
+
+main()
+    const struct_src = "struct Point x: int y: int end"
+    const struct_tokens = lex.tokenize_all(struct_src)
+    io.println(f"PARSE_STRUCT_TOKENS: {lists.len(struct_tokens)}")
+
+    const struct_parser = pi.new_parser(struct_tokens)
+    const struct_out = pi.parse_struct(struct_parser, 1)
+
+    match struct_out.item
+    case some(_):
+        io.println("PARSE_STRUCT_OK")
+    case none:
+        io.println("PARSE_STRUCT_FAIL")
+    end
+
+    const enum_src = "enum Direction North South end"
+    const enum_tokens = lex.tokenize_all(enum_src)
+    io.println(f"PARSE_ENUM_TOKENS: {lists.len(enum_tokens)}")
+
+    const enum_parser = pi.new_parser(enum_tokens)
+    const enum_out = pi.parse_enum(enum_parser, 2)
+
+    match enum_out.item
+    case some(_):
+        io.println("PARSE_ENUM_OK")
+    case none:
+        io.println("PARSE_ENUM_FAIL")
+    end
+
+    const func_src = "identity(value: int) -> int"
+    const func_tokens = lex.tokenize_all(func_src)
+    io.println(f"PARSE_FUNC_TOKENS: {lists.len(func_tokens)}")
+
+    const func_parser = pi.new_parser(func_tokens)
+    const func_out = pi.parse_func_signature(func_parser, 3)
+
+    match func_out.item
+    case some(_):
+        io.println("PARSE_FUNC_OK")
+    case none:
+        io.println("PARSE_FUNC_FAIL")
+    end
+
+    io.println("AST_ALL_PASSED")
+end

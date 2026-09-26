@@ -1,0 +1,59 @@
+module selfhost.compiler.frontend.parse.test_module1_full
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.decl_and_recovery as dr
+import selfhost.compiler.frontend.parse.parse_expr as pe
+import selfhost.compiler.frontend.parse.pratt as pr
+import selfhost.compiler.frontend.parse.struct_and_closure as sc
+
+main()
+    -- 1. Test Pratt precedence climbing: 1 + 2 * 3 (mult binds tighter than add)
+    const pool = pe.new_pool()
+    const tokens = lex.tokenize_all("1 + 2 * 3")
+    const pratt_out = pr.parse_with_precedence(tokens, 0, pool, 0)
+    match pratt_out
+    case some(out):
+        io.println(f"PRATT_PRECEDENCE_OK: id={out.expr_id}")
+    case none:
+        io.println("PRATT_PRECEDENCE_FAIL")
+    end
+
+    -- 2. Test Chained comparison guard: a < b < c is rejected
+    const chain_tokens = lex.tokenize_all("1 < 2 < 3")
+    const guard_err = pr.parse_comparison_chain_guard(chain_tokens, 0, pool)
+    match guard_err
+    case some(msg):
+        io.println(f"CHAIN_GUARD_OK: {msg}")
+    case none:
+        io.println("CHAIN_GUARD_FAIL")
+    end
+
+    -- 3. Test canonical struct literal: Point { x: 1, y: 2 }
+    const struct_toks = lex.tokenize_all("Point { x: 1, y: 2 }")
+    const struct_out = sc.parse_struct_literal(struct_toks, 0, pool)
+    match struct_out
+    case some(out):
+        io.println(f"STRUCT_LIT_OK: type={out.type_name} fields={lists.len(out.field_names)}")
+    case none:
+        io.println("STRUCT_LIT_FAIL")
+    end
+
+    -- 4. Test inline closure: (x) => 42
+    const closure_toks = lex.tokenize_all("(x) => 42")
+    const closure_out = sc.parse_inline_closure(closure_toks, 0, pool)
+    match closure_out
+    case some(out):
+        io.println(f"CLOSURE_OK: params={lists.len(out.param_names)}")
+    case none:
+        io.println("CLOSURE_FAIL")
+    end
+
+    -- 5. Test error recovery sync point
+    const bad_tokens = lex.tokenize_all("random garbage tokens end struct A end")
+    const next_pos = dr.skip_to_sync(bad_tokens, 0)
+    io.println(f"RECOVERY_SYNC_POS: {next_pos}")
+
+    io.println("MODULE1_ALL_TESTS_SUCCESS")
+end

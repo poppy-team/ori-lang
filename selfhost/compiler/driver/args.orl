@@ -1,0 +1,54 @@
+module selfhost.compiler.driver.args
+
+import ori.list as lists
+
+public struct CliArgs
+    subcommand: string
+    source_file: string
+    output_path: string
+    is_lib: bool
+    stage: int
+end
+
+public default_args() -> CliArgs
+    return CliArgs {
+        subcommand: "check",
+        source_file: "",
+        output_path: "",
+        is_lib: false,
+        stage: 1
+    }
+end
+
+public parse_cli(tokens: list[string]) -> CliArgs
+    var args = default_args()
+    const count = lists.len(tokens)
+    if count == 0
+        return args
+    end
+
+    const cmd = lists.get(tokens, 0)
+    args.subcommand = cmd
+
+    var i = 1
+    while i < count
+        const tok = lists.get(tokens, i)
+        if tok == "--lib"
+            args.is_lib = true
+        elif tok == "-o"
+            if i + 1 < count
+                i = i + 1
+                args.output_path = lists.get(tokens, i)
+            end
+        elif tok == "--stage"
+            if i + 1 < count
+                i = i + 1
+                args.stage = 2
+            end
+        elif args.source_file == ""
+            args.source_file = tok
+        end
+        i = i + 1
+    end
+    return args
+end

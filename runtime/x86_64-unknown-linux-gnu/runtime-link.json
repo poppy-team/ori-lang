@@ -2,11 +2,11 @@
   "target": "x86_64-unknown-linux-gnu",
   "runtime": "libori_runtime.a",
   "runtime_cdylib": "libori_runtime.so",
-  "runtime_sha256": "b22b1ba3b92a5d50d6838db45b4ab871dceada047e4198bb3fa616b79b652ba5",
-  "runtime_cdylib_sha256": "2b1e2a7c9c0263a2b35ea1316bbbe7251a3acb3559f82221a45d5f302f889b6a",
+  "runtime_sha256": "7ed830f0ae06f704b23cc028b7e3b5d1a33aafc71b09b071807db9258ba31a16",
+  "runtime_cdylib_sha256": "6187c80cc95fe4d284670cd7dc8102a6f33c13443d039101603ebbb79b1d5bb4",
   "ori_version": "0.3.8",
   "abi_version": "ori-native-abi-1",
-  "profile": "release",
+  "profile": "debug",
   "native_static_libs": ["-lgcc_s", "-lutil", "-lrt", "-lpthread", "-lm", "-ldl", "-lc", "-no-pie"],
   "generated_by": "tools/stage_native_runtime.sh"
 }

@@ -1,0 +1,37 @@
+module selfhost.compiler.frontend.types.test_types
+
+import ori.io as io
+import selfhost.compiler.frontend.types.infer as inf
+import selfhost.compiler.frontend.types.unify as uni
+
+main()
+    const pool = uni.new_pool()
+
+    -- 1. Test basic unification
+    const int_match = uni.unify(pool, 0, 0)
+    match int_match
+    case ok(_):
+        io.println("UNIFY_INT_OK")
+    case err(_):
+        io.println("UNIFY_INT_FAIL")
+    end
+
+    -- 2. Negative test: int vs string
+    const mismatch = uni.unify(pool, 0, 3)
+    match mismatch
+    case ok(_):
+        io.println("UNIFY_MISMATCH_FAIL")
+    case err(_):
+        io.println("UNIFY_MISMATCH_NEGATIVE_OK")
+    end
+
+    -- 3. Inference context test
+    const ctx = inf.new_infer_context()
+    const binary_res = inf.infer_binary_int(ctx, pool, 0, 0)
+    io.println(f"INFER_BINARY_TYPE: {binary_res}")
+
+    const bad_binary = inf.infer_binary_int(ctx, pool, 0, 3)
+    io.println(f"INFER_BAD_BINARY_ERRORS: {inf.check_error_count(ctx)}")
+
+    io.println("TYPE_ALL_PASSED")
+end

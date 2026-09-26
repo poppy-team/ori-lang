@@ -1,0 +1,48 @@
+module selfhost.compiler.frontend.types.test_types_deep
+
+import ori.io as io
+import selfhost.compiler.frontend.types.check_full as cf
+import selfhost.compiler.frontend.types.const_eval as ce
+import selfhost.compiler.frontend.types.generics as gen
+import selfhost.compiler.frontend.types.stdlib_manifest as man
+
+main()
+    -- 1. Test generic parameter binding
+    const inst = gen.new_instantiation()
+    gen.bind_type_param(inst, "T", 0) -- T -> int
+    match gen.resolve_param(inst, "T")
+    case some(id):
+        io.println(f"GENERIC_PARAM_OK: T={id}")
+    case none:
+        io.println("GENERIC_PARAM_FAIL")
+    end
+
+    -- 2. Test stdlib manifest lookup
+    const manifest = man.new_manifest()
+    man.seed_layer1(manifest)
+    match man.lookup_return_shape(manifest, "ori.list.len")
+    case some(shape):
+        io.println(f"MANIFEST_LOOKUP_OK: {shape}")
+    case none:
+        io.println("MANIFEST_LOOKUP_FAIL")
+    end
+
+    -- 3. Test compile-time constant evaluation
+    const const_val = ce.eval_binary_int("+", 20, 22)
+    match const_val
+    case ConstInt(val):
+        io.println(f"CONST_EVAL_OK: {val}")
+    case else:
+        io.println("CONST_EVAL_FAIL")
+    end
+
+    -- 4. Test full checker arity and type consistency
+    const checker = cf.new_full_checker()
+    const arity_ok = cf.check_call_arity(checker, "println", 1, 1)
+    io.println(f"CHECK_ARITY_OK: {arity_ok}")
+
+    const arity_bad = cf.check_call_arity(checker, "add", 1, 2)
+    io.println(f"CHECK_ERRORS_ACCUMULATED: {cf.check_error_count(checker)}")
+
+    io.println("ONDA3_TYPES_COMPLETE_SUCCESS")
+end

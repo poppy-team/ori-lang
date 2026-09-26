@@ -1,0 +1,56 @@
+module selfhost.compiler.frontend.types.decision_tree
+
+import ori.list as lists
+
+public struct MatchMatrix
+    variant_names: list[string]
+    arm_covered: list[string]
+    has_default: bool
+end
+
+public new_matrix(has_default: bool) -> MatchMatrix
+    const empty_v: list[string] = []
+    const empty_c: list[string] = []
+    return MatchMatrix {
+        variant_names: empty_v,
+        arm_covered: empty_c,
+        has_default: has_default
+    }
+end
+
+public declare_variant(m: MatchMatrix, name: string)
+    lists.push(m.variant_names, name)
+end
+
+public cover_arm(m: MatchMatrix, name: string)
+    lists.push(m.arm_covered, name)
+end
+
+public verify_exhaustiveness(m: MatchMatrix) -> optional[string]
+    if m.has_default
+        return none
+    end
+
+    var i = 0
+    const count = lists.len(m.variant_names)
+    while i < count
+        const v = lists.get(m.variant_names, i)
+        if not list_has_str(m.arm_covered, v)
+            return some(f"match.non_exhaustive: missing pattern variant {v}")
+        end
+        i = i + 1
+    end
+    return none
+end
+
+list_has_str(items: list[string], target: string) -> bool
+    var i = 0
+    const count = lists.len(items)
+    while i < count
+        if lists.get(items, i) == target
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end

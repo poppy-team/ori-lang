@@ -1,0 +1,58 @@
+module selfhost.compiler.frontend.parse.func_body_parser
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.decl_and_recovery as dr
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+
+public struct FuncBodyOut
+    stmt_ids: list[int]
+    next_cursor: int
+end
+
+public parse_statements_until_end(
+    tokens: list[tok.Token],
+    start_cursor: int,
+    pool: exprs.ExprPool,
+    sp: stmts.StmtPool
+) -> FuncBodyOut
+    const ids: list[int] = []
+    var cur = start_cursor
+    -- Use clean, decoupled skip_to_sync to find the exact end of this function body
+    const body_end = dr.skip_to_sync(tokens, start_cursor)
+    if body_end <= start_cursor
+        stmts.alloc_stmt_raw(sp, 0, -1, "")
+        return FuncBodyOut { stmt_ids: ids, next_cursor: body_end }
+    end
+    const closing = lists.get(tokens, body_end - 1)
+    match closing.kind
+    case End:
+    case else:
+        stmts.alloc_stmt_raw(sp, 0, -1, "")
+    end
+
+    -- The final End closes the function; every token before it must belong
+    -- to a statement we can represent. Skipping an unknown token could turn
+    -- an unsupported source program into a different, executable program.
+    while cur < body_end - 1
+        match stmts.parse_statement(tokens, cur, pool, sp)
+        case some(out):
+            lists.push(ids, out.stmt_id)
+            if out.next_cursor > body_end - 1
+                stmts.alloc_stmt_raw(sp, 0, -1, "")
+                cur = out.next_cursor
+            elif out.next_cursor > cur
+                cur = out.next_cursor
+            else
+                stmts.alloc_stmt_raw(sp, 0, -1, "")
+                cur = cur + 1
+            end
+        case none:
+            stmts.alloc_stmt_raw(sp, 0, -1, "")
+            cur = cur + 1
+        end
+    end
+
+    return FuncBodyOut { stmt_ids: ids, next_cursor: body_end }
+end

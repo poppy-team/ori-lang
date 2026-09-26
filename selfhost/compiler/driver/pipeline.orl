@@ -1,0 +1,310 @@
+module selfhost.compiler.driver.pipeline
+
+import ori.fs as fs
+import ori.io as io
+import ori.list as lists
+import ori.string as su
+import selfhost.compiler.bridge.body_emitter as bemitter
+import selfhost.compiler.bridge.bridge_client as bclient
+import selfhost.compiler.bridge.serde_full as bridge_serde
+import selfhost.compiler.driver.args as cli_args
+import selfhost.compiler.driver.module_linker as linker
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.file_parser as fp
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+import selfhost.compiler.frontend.resolve.def_map as dm
+import selfhost.compiler.frontend.resolve.graph_loader as graph_loader
+import selfhost.compiler.frontend.types.type_engine as te
+import selfhost.compiler.hir.lower as lo
+
+public struct PipelineResult
+    token_count: int
+    parsed_items: int
+    expr_count: int
+    symbol_count: int
+    func_count: int
+    error_count: int
+    payload_json: string
+    codegen_supported: bool
+    status: string
+end
+
+public run_full_pipeline(content: string, out_path: string) -> PipelineResult
+    -- 1. Lexer (Full source code scanned to tokens)
+    const tokens = lex.tokenize_all(content)
+    const tok_len = lists.len(tokens)
+    io.println(f"PIPELINE_LEXED: tokens={tok_len}")
+
+    -- 2. Parser (Parse all declarations with real function bodies via file_parser)
+    const parsed_file = fp.parse_entire_file(tokens)
+    const item_len = parsed_file.item_count
+    const expr_len = parsed_file.expr_count
+    io.println(f"PIPELINE_PARSED: items={item_len} expressions={expr_len}")
+
+    -- 3. Resolver PASS-1 & PASS-2: register declarations (with visibility) and resolve true Ident references
+    const dmap = dm.new_def_map()
+    const sink = ds.new_sink()
+    dm.pass1_collect_declarations_pub(dmap, sink, parsed_file.module_name, parsed_file.func_names, parsed_file.func_is_public, parsed_file.struct_names, parsed_file.struct_is_public, parsed_file.enum_names, parsed_file.enum_is_public)
+    io.println("PIPELINE_DECLARATIONS_COLLECTED")
+    const loaded = graph_loader.load_graph(parsed_file.module_name, content, sink)
+    var import_idx = 0
+    var io_alias = ""
+    while import_idx < lists.len(parsed_file.import_paths)
+        const path = lists.get(parsed_file.import_paths, import_idx)
+        const alias_name = lists.get(parsed_file.import_aliases, import_idx)
+        if path == "ori.io" and alias_name == "io"
+            io_alias = alias_name
+        end
+        if graph_loader.module_loaded(loaded, path)
+            dm.register_def(dmap, sink, alias_name, path, 10, false)
+        end
+        import_idx = import_idx + 1
+    end
+    io.println(f"PIPELINE_IMPORTS_VALIDATED: count={import_idx}")
+    const catalog = linker.build_catalog(parsed_file, loaded, sink)
+    dm.register_local_bindings(dmap, parsed_file.stmt_target_names)
+    dm.register_local_bindings(dmap, parsed_file.func_param_names)
+    dm.pass2_resolve_idents_only(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_str_vals)
+    io.println("PIPELINE_REFERENCES_RESOLVED")
+    const sym_count = dm.total_defs(dmap)
+
+    -- 4. Type Checker: check all statements and return matching against declared signature
+    const sp_check = stmts.StmtPool {
+        kind_tags: parsed_file.stmt_kind_tags,
+        expr_ids: parsed_file.stmt_expr_ids,
+        target_names: parsed_file.stmt_target_names,
+        type_annotations: parsed_file.stmt_type_annotations,
+        mutable_flags: parsed_file.stmt_mutable_flags,
+        branch_starts: parsed_file.stmt_branch_starts,
+        subtree_ends: parsed_file.stmt_subtree_ends
+    }
+    const exp_check = exprs.ExprPool {
+        kind_tags: parsed_file.expr_kind_tags,
+        left_ids: parsed_file.expr_left_ids,
+        right_ids: parsed_file.expr_right_ids,
+        third_ids: parsed_file.expr_third_ids,
+        str_vals: parsed_file.expr_str_vals,
+        call_arg_starts: parsed_file.expr_call_arg_starts,
+        call_arg_counts: parsed_file.expr_call_arg_counts,
+        call_arg_ids: parsed_file.expr_call_arg_ids
+    }
+    var checked_functions = 0
+    var checked_bindings = 0
+    var checked_param_offset = 0
+    while checked_functions < lists.len(parsed_file.func_names)
+        const checker_env = te.new_env()
+        const first_stmt = lists.get(parsed_file.func_first_stmt_idx, checked_functions)
+        const last_stmt = lists.get(parsed_file.func_last_stmt_idx, checked_functions)
+        const target_ret_ty = lists.get(parsed_file.func_ret_tys, checked_functions)
+        const param_names: list[string] = []
+        const param_count = lists.get(parsed_file.func_param_counts, checked_functions)
+        var param_idx = 0
+        while param_idx < param_count
+            const param_name = lists.get(parsed_file.func_param_names, checked_param_offset + param_idx)
+            const param_ty = lists.get(parsed_file.func_param_tys, checked_param_offset + param_idx)
+            lists.push(param_names, param_name)
+            lists.push(checker_env.binding_names, param_name)
+            lists.push(checker_env.binding_ty_tags, te.type_str_to_tag(param_ty))
+            lists.push(checker_env.binding_mutable, 0)
+            param_idx = param_idx + 1
+        end
+        checked_param_offset = checked_param_offset + param_count
+        dm.check_function_scope(dmap, sink, parsed_file.expr_kind_tags, parsed_file.expr_left_ids, parsed_file.expr_right_ids, parsed_file.expr_third_ids, parsed_file.expr_str_vals, parsed_file.expr_call_arg_starts, parsed_file.expr_call_arg_counts, parsed_file.expr_call_arg_ids, parsed_file.stmt_kind_tags, parsed_file.stmt_expr_ids, parsed_file.stmt_target_names, parsed_file.stmt_branch_starts, parsed_file.stmt_subtree_ends, first_stmt, last_stmt, param_names)
+        te.check_function_statement_range_in_module(checker_env, sink, sp_check, exp_check, first_stmt, last_stmt, target_ret_ty, catalog.func_names, catalog.func_ret_tys)
+        checked_bindings = checked_bindings + te.binding_count(checker_env)
+        checked_functions = checked_functions + 1
+    end
+    io.println(f"TYPE_CHECK: defs={sym_count} env_bindings={checked_bindings} errors={ds.error_count(sink)}")
+    const total_errors = ds.error_count(sink)
+    if total_errors > 0
+        -- Do not lower or serialize an invalid program. Partial IR can contain
+        -- missing expressions and cannot be safely handed to the bridge.
+        render_sink_errors(sink)
+        return PipelineResult {
+            token_count: tok_len,
+            parsed_items: item_len,
+            expr_count: expr_len,
+            symbol_count: sym_count,
+            func_count: 0,
+            error_count: total_errors,
+            payload_json: "",
+            codegen_supported: false,
+            status: "type_error"
+        }
+    end
+
+    -- 5. HIR Lowering (Lower all functions directly from SOA lists with real statements)
+    const sp = stmts.StmtPool {
+        kind_tags: parsed_file.stmt_kind_tags,
+        expr_ids: parsed_file.stmt_expr_ids,
+        target_names: parsed_file.stmt_target_names,
+        type_annotations: parsed_file.stmt_type_annotations,
+        mutable_flags: parsed_file.stmt_mutable_flags,
+        branch_starts: parsed_file.stmt_branch_starts,
+        subtree_ends: parsed_file.stmt_subtree_ends
+    }
+    const exp_pool = exprs.ExprPool {
+        kind_tags: parsed_file.expr_kind_tags,
+        left_ids: parsed_file.expr_left_ids,
+        right_ids: parsed_file.expr_right_ids,
+        third_ids: parsed_file.expr_third_ids,
+        str_vals: parsed_file.expr_str_vals,
+        call_arg_starts: parsed_file.expr_call_arg_starts,
+        call_arg_counts: parsed_file.expr_call_arg_counts,
+        call_arg_ids: parsed_file.expr_call_arg_ids
+    }
+
+    const l_ctx = lo.new_lower_context(parsed_file.module_name)
+    var k = 0
+    var param_offset = 0
+    const fn_total = lists.len(parsed_file.func_names)
+    var codegen_supported = fn_total > 0 and parsed_file.codegen_complete
+    while k < fn_total
+        const fn_name = lists.get(parsed_file.func_names, k)
+        const fn_ret = lists.get(parsed_file.func_ret_tys, k)
+        const param_count = lists.get(parsed_file.func_param_counts, k)
+        if param_count > 8 or (fn_name == "main" and param_count != 0) or (fn_ret != "int" and fn_ret != "bool" and fn_ret != "string" and fn_ret != "void")
+            codegen_supported = false
+            io.println(f"CODEGEN_UNSUPPORTED_SIGNATURE: {fn_name} params={param_count} return={fn_ret}")
+        end
+        const param_names: list[string] = []
+        const param_jsons: list[string] = []
+        var param_idx = 0
+        while param_idx < param_count
+            const param_name = lists.get(parsed_file.func_param_names, param_offset + param_idx)
+            const param_ty = lists.get(parsed_file.func_param_tys, param_offset + param_idx)
+            if param_ty != "int"
+                codegen_supported = false
+                io.println(f"CODEGEN_UNSUPPORTED_PARAM_TYPE: {fn_name} {param_name}: {param_ty}")
+            end
+            lists.push(param_names, param_name)
+            lists.push(param_jsons, f"{{\"name\":\"{param_name}\",\"ty\":\"Int\"}}")
+            param_idx = param_idx + 1
+        end
+        param_offset = param_offset + param_count
+        const first_stmt = lists.get(parsed_file.func_first_stmt_idx, k)
+        const last_stmt = lists.get(parsed_file.func_last_stmt_idx, k)
+        const body_supported = bemitter.can_emit_range(sp, exp_pool, first_stmt, last_stmt, fn_ret, io_alias, param_names, catalog.func_names, catalog.func_ret_tys, catalog.func_param_counts)
+        if not body_supported
+            codegen_supported = false
+            io.println(f"CODEGEN_UNSUPPORTED_BODY: {fn_name} statements={first_stmt}..{last_stmt}")
+            var stmt_idx = first_stmt
+            while stmt_idx < last_stmt
+                const stmt_tag = lists.get(sp.kind_tags, stmt_idx)
+                const expr_id = lists.get(sp.expr_ids, stmt_idx)
+                if expr_id >= 0 and expr_id < lists.len(exp_pool.kind_tags)
+                    const expr_tag = lists.get(exp_pool.kind_tags, expr_id)
+                    io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} expression={expr_tag}")
+                    if expr_tag == 6
+                        const callee = lists.get(exp_pool.str_vals, expr_id)
+                        const arg_id = lists.get(exp_pool.left_ids, expr_id)
+                        io.println(f"CODEGEN_CALL: callee={callee} arg={arg_id}")
+                        if arg_id >= 0 and arg_id < lists.len(exp_pool.kind_tags)
+                            const arg_tag = lists.get(exp_pool.kind_tags, arg_id)
+                            io.println(f"CODEGEN_CALL_ARGUMENT: tag={arg_tag}")
+                        end
+                    end
+                else
+                    io.println(f"CODEGEN_STATEMENT: tag={stmt_tag} invalid_expression={expr_id}")
+                end
+                stmt_idx = stmt_idx + 1
+            end
+        end
+        const body_json = if body_supported then bemitter.emit_range_stmts_json(sp, exp_pool, first_stmt, last_stmt, param_names, catalog.func_names, catalog.func_ret_tys, catalog.func_param_counts) else ""
+        lists.push(l_ctx.module_ir.func_names, fn_name)
+        lists.push(l_ctx.module_ir.func_ret_tys, fn_ret)
+        lists.push(l_ctx.module_ir.func_param_jsons, su.join(param_jsons, ","))
+        lists.push(l_ctx.module_ir.func_body_jsons, body_json)
+        k = k + 1
+    end
+    if not linker.append_imported_functions(catalog, l_ctx.module_ir, sink)
+        codegen_supported = false
+        io.println("CODEGEN_UNSUPPORTED_IMPORTED_MODULE")
+    end
+    const import_errors = ds.error_count(sink)
+    if import_errors > 0
+        render_sink_errors(sink)
+        return PipelineResult {
+            token_count: tok_len, parsed_items: item_len, expr_count: expr_len,
+            symbol_count: sym_count, func_count: 0, error_count: import_errors,
+            payload_json: "", codegen_supported: false, status: "import_type_error"
+        }
+    end
+    const f_count = lo.module_func_count(l_ctx)
+
+    -- 6. Bridge Payload Serialization (real lowered HIR with all module functions)
+    const bridge_json = if codegen_supported then bridge_serde.module_to_bridge_json(l_ctx.module_ir, out_path) else ""
+    io.println(f"BRIDGE_PAYLOAD_BYTES: {su.len(bridge_json)}")
+
+    return PipelineResult {
+        token_count: tok_len,
+        parsed_items: item_len,
+        expr_count: expr_len,
+        symbol_count: sym_count,
+        func_count: f_count,
+        error_count: total_errors,
+        payload_json: bridge_json,
+        codegen_supported: codegen_supported,
+        status: "pipeline_success"
+    }
+end
+
+public render_sink_errors(sink: ds.DiagnosticSink)
+    var i = 0
+    const total = ds.total_count(sink)
+    while i < total
+        -- Diagnostic spans are not yet preserved by this frontend. Printing
+        -- a hard-coded source line for every error would blame unrelated code.
+        io.println(f"error: {ds.diagnostic_message_at(sink, i)}")
+        i = i + 1
+    end
+end
+
+public dispatch(parsed: cli_args.CliArgs, content: string) -> int
+    const final_bin = if parsed.output_path == "" then "/tmp/out.bin" else parsed.output_path
+    const obj_tmp = f"{final_bin}.tmp.o"
+    const res = run_full_pipeline(content, obj_tmp)
+    io.println(f"PIPELINE_RESULT: {res.status} tokens={res.token_count} items={res.parsed_items} exprs={res.expr_count} symbols={res.symbol_count} funcs={res.func_count} errors={res.error_count}")
+
+    if res.error_count > 0
+        io.println(f"{res.error_count} error(s) found")
+        return 1
+    end
+
+    if parsed.subcommand == "compile"
+        if not res.codegen_supported
+            io.println("error[bridge.unsupported_ir]: this compiler cannot emit all declarations, parameters, return types, or statements in the source")
+            return 1
+        end
+        const link_res = bclient.invoke_bridge_and_link(res.payload_json, obj_tmp, final_bin)
+        if not link_res.is_ok
+            io.println(f"error[bridge.compile]: {link_res.message}")
+            return 1
+        else
+            io.println(f"NATIVE_BINARY_EMITTED: {link_res.exe_path}")
+        end
+    end
+
+    return 0
+end
+
+public dispatch_file(parsed: cli_args.CliArgs) -> int
+    if parsed.subcommand != "check" and parsed.subcommand != "compile"
+        io.println(f"error[cli.unsupported_command]: {parsed.subcommand}")
+        return 1
+    end
+    if parsed.source_file == ""
+        io.println("error: no source file specified")
+        return 1
+    end
+
+    match fs.read_text(parsed.source_file)
+    case ok(content):
+        return dispatch(parsed, content)
+    case err(msg):
+        io.println(f"error[fs.read]: failed to read {parsed.source_file}: {msg}")
+        return 1
+    end
+end

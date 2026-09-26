@@ -1,0 +1,23 @@
+module selfhost.compiler.bridge.test_serialize
+
+import ori.io as io
+import selfhost.compiler.bridge.serialize as ser
+
+main()
+    const ver: ser.ProtocolVersion = ser.ProtocolVersion(1)
+    const id: ser.RequestId = ser.RequestId(42)
+    const payload: string = "{\"test\":true}"
+
+    const env = ser.make_envelope(ver, id, "handshake", payload)
+    
+    match ser.envelope_to_json(env)
+    case ok(json_str):
+        io.println(f"SERIALIZE_OK: {json_str}")
+    case err(e):
+        io.println(f"SERIALIZE_FAIL: {e}")
+    end
+
+    const keys: list[string] = ["zeta", "alpha", "gamma", "beta"]
+    const sorted_keys = ser.sort_keys(keys)
+    io.println(f"SORTED_KEYS_COUNT: {ori.list.len(sorted_keys)}")
+end

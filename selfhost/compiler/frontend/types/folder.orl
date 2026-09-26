@@ -1,0 +1,88 @@
+module selfhost.compiler.frontend.types.folder
+
+import ori.list as lists
+
+public enum ConstExpr
+    LitInt(val: int)
+    AddExpr(left_id: int, right_id: int)
+    MulExpr(left_id: int, right_id: int)
+    ConstName(name: string)
+end
+
+public struct ConstTable
+    exprs: list[ConstExpr]
+    names: list[string]
+    values: list[int]
+end
+
+public new_const_table() -> ConstTable
+    const empty_e: list[ConstExpr] = []
+    const empty_n: list[string] = []
+    const empty_v: list[int] = []
+    return ConstTable {
+        exprs: empty_e,
+        names: empty_n,
+        values: empty_v
+    }
+end
+
+public alloc_const_expr(table: ConstTable, expr: ConstExpr) -> int
+    const id = lists.len(table.exprs)
+    lists.push(table.exprs, expr)
+    return id
+end
+
+public fold_const(table: ConstTable, id: int) -> optional[int]
+    if id < 0 or id >= lists.len(table.exprs)
+        return none
+    end
+
+    const expr = lists.get(table.exprs, id)
+    match expr
+    case LitInt(val):
+        return some(val)
+    case AddExpr(left_id, right_id):
+        match fold_const(table, left_id)
+        case some(l):
+            match fold_const(table, right_id)
+            case some(r):
+                return some(l + r)
+            case none:
+                return none
+            end
+        case none:
+            return none
+        end
+    case MulExpr(left_id, right_id):
+        match fold_const(table, left_id)
+        case some(l):
+            match fold_const(table, right_id)
+            case some(r):
+                return some(l * r)
+            case none:
+                return none
+            end
+        case none:
+            return none
+        end
+    case ConstName(name):
+        return lookup_named_value(table, name)
+    end
+end
+
+lookup_named_value(table: ConstTable, name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(table.names)
+    while i < count
+        if lists.get(table.names, i) == name
+            return some(lists.get(table.values, i))
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public bind_named_value(table: ConstTable, name: string, val: int)
+    lists.push(table.names, name)
+    lists.push(table.values, val)
+end

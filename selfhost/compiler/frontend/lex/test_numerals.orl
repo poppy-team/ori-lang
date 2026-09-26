@@ -1,0 +1,19 @@
+module selfhost.compiler.frontend.lex.test_numerals
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+
+main()
+    const inputs: list[string] = ["42", "1_000_000", "0xFF", "0o755", "0b1010", "42u8", "100i32", "3.14", "6.022e23"]
+
+    var i = 0
+    while i < lists.len(inputs)
+        const src = lists.get(inputs, i)
+        const toks = lex.tokenize_all(src)
+        io.println(f"NUM_CASE: {src} -> {lists.len(toks)} tokens")
+        i = i + 1
+    end
+
+    io.println("F1_01_NUMERALS_SUCCESS")
+end

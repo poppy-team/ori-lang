@@ -1,0 +1,148 @@
+module selfhost.compiler.frontend.types.unify
+
+import ori.list as lists
+
+public newtype TypeId = int
+
+public enum ConcreteType
+    TyInt
+    TyFloat
+    TyBool
+    TyString
+    TyVoid
+    TyList(elem_id: int)
+    TyOptional(inner_id: int)
+    TyResult(ok_id: int, err_id: int)
+    TyNamed(name: string)
+    TyVar(id: int)
+end
+
+public struct TypePool
+    types: list[ConcreteType]
+end
+
+public new_pool() -> TypePool
+    const empty_tys: list[ConcreteType] = []
+    const pool = TypePool { types: empty_tys }
+    lists.push(pool.types, ConcreteType.TyInt)
+    lists.push(pool.types, ConcreteType.TyFloat)
+    lists.push(pool.types, ConcreteType.TyBool)
+    lists.push(pool.types, ConcreteType.TyString)
+    lists.push(pool.types, ConcreteType.TyVoid)
+    return pool
+end
+
+public alloc_type(pool: TypePool, ty: ConcreteType) -> int
+    const id = lists.len(pool.types)
+    lists.push(pool.types, ty)
+    return id
+end
+
+public get_type(pool: TypePool, id: int) -> optional[ConcreteType]
+    if id < 0 or id >= lists.len(pool.types)
+        return none
+    end
+    return some(lists.get(pool.types, id))
+end
+
+public alias UnifyResult = result[bool, string]
+
+public unify(pool: TypePool, a_id: int, b_id: int) -> UnifyResult
+    if a_id == b_id
+        return ok(true)
+    end
+
+    const a_opt = get_type(pool, a_id)
+    const b_opt = get_type(pool, b_id)
+
+    match a_opt
+    case none:
+        return err(f"type.undefined_type_id: {a_id}")
+    case some(a_ty):
+        match b_opt
+        case none:
+            return err(f"type.undefined_type_id: {b_id}")
+        case some(b_ty):
+            return match_types(pool, a_ty, b_ty)
+        end
+    end
+end
+
+match_types(pool: TypePool, a: ConcreteType, b: ConcreteType) -> UnifyResult
+    match a
+    case TyInt:
+        match b
+        case TyInt: return ok(true)
+        case else: return err("type.mismatch: expected int")
+        end
+    case TyFloat:
+        match b
+        case TyFloat: return ok(true)
+        case else: return err("type.mismatch: expected float")
+        end
+    case TyBool:
+        match b
+        case TyBool: return ok(true)
+        case else: return err("type.mismatch: expected bool")
+        end
+    case TyString:
+        match b
+        case TyString: return ok(true)
+        case else: return err("type.mismatch: expected string")
+        end
+    case TyVoid:
+        match b
+        case TyVoid: return ok(true)
+        case else: return err("type.mismatch: expected void")
+        end
+    case TyList(elem_id):
+        const a_elem = elem_id
+        match b
+        case TyList(elem_id):
+            return unify(pool, a_elem, elem_id)
+        case else:
+            return err("type.mismatch: expected list")
+        end
+    case TyOptional(inner_id):
+        const a_inner = inner_id
+        match b
+        case TyOptional(inner_id):
+            return unify(pool, a_inner, inner_id)
+        case else:
+            return err("type.mismatch: expected optional")
+        end
+    case TyResult(ok_id, err_id):
+        const a_ok = ok_id
+        const a_err = err_id
+        match b
+        case TyResult(ok_id, err_id):
+            const ok_match = unify(pool, a_ok, ok_id)
+            match ok_match
+            case err(e): return err(e)
+            case ok(_):
+                return unify(pool, a_err, err_id)
+            end
+        case else:
+            return err("type.mismatch: expected result")
+        end
+    case TyNamed(name):
+        const a_name = name
+        match b
+        case TyNamed(name):
+            if a_name == name
+                return ok(true)
+            end
+            return err(f"type.mismatch: {a_name} != {name}")
+        case else:
+            return err("type.mismatch: expected named type")
+        end
+    case TyVar(id):
+        match b
+        case TyVar(id):
+            return ok(true)
+        case else:
+            return ok(true)
+        end
+    end
+    return err("type.unhandled_case")
+end

@@ -1,0 +1,45 @@
+module selfhost.compiler.frontend.types.check_full
+
+import ori.list as lists
+import selfhost.compiler.frontend.types.generics as gen
+import selfhost.compiler.frontend.types.stdlib_manifest as man
+import selfhost.compiler.frontend.types.unify as uni
+
+public struct FullChecker
+    instantiation: gen.InstantiationContext
+    manifest: man.StdlibManifest
+    pool: uni.TypePool
+    errors: list[string]
+end
+
+public new_full_checker() -> FullChecker
+    return FullChecker {
+        instantiation: gen.new_instantiation(),
+        manifest: man.new_manifest(),
+        pool: uni.new_pool(),
+        errors: []
+    }
+end
+
+public check_call_arity(checker: FullChecker, callee: string, arg_count: int, expected: int) -> bool
+    if arg_count != expected
+        lists.push(checker.errors, f"type.arity_mismatch: {callee} expects {expected} args, got {arg_count}")
+        return false
+    end
+    return true
+end
+
+public check_binary_types(checker: FullChecker, op: string, left_id: int, right_id: int) -> bool
+    const ok_types = uni.unify(checker.pool, left_id, right_id)
+    match ok_types
+    case err(msg):
+        lists.push(checker.errors, msg)
+        return false
+    case ok(_):
+        return true
+    end
+end
+
+public check_error_count(checker: FullChecker) -> int
+    return lists.len(checker.errors)
+end

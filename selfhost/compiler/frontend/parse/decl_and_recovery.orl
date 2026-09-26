@@ -1,0 +1,117 @@
+module selfhost.compiler.frontend.parse.decl_and_recovery
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+
+public struct RecoveryPoint
+    sync_tokens: list[int]
+end
+
+public new_recovery() -> RecoveryPoint
+    const sync: list[int] = []
+    lists.push(sync, 1)
+    lists.push(sync, 3)
+    lists.push(sync, 4)
+    return RecoveryPoint { sync_tokens: sync }
+end
+
+-- An inline `if condition then a else b` has no closing `end`.
+-- Its leading token follows an expression introducer. Treating it as a
+-- block would swallow the declarations after the enclosing function.
+inline_if_at(tokens: list[tok.Token], cursor: int) -> bool
+    if cursor <= 0
+        return false
+    end
+    const previous = lists.get(tokens, cursor - 1)
+    match previous.kind
+    case Eq: return true
+    case Comma: return true
+    case Return: return true
+    case LParen: return true
+    case Then: return true
+    case Else: return true
+    case Plus: return true
+    case Minus: return true
+    case Star: return true
+    case Slash: return true
+    case Percent: return true
+    case Not: return true
+    case And: return true
+    case Or: return true
+    case EqEq: return true
+    case BangEq: return true
+    case Lt: return true
+    case LtEq: return true
+    case Gt: return true
+    case GtEq: return true
+    case Colon: return true
+    case else: return false
+    end
+end
+
+public skip_to_sync(tokens: list[tok.Token], cursor: int) -> int
+    var cur = cursor
+    const total = lists.len(tokens)
+    var depth = 1
+
+    while cur < total and depth > 0
+        const t = lists.get(tokens, cur)
+        match t.kind
+        case End:
+            depth = depth - 1
+            cur = cur + 1
+        case If:
+            if not inline_if_at(tokens, cur)
+                depth = depth + 1
+            end
+            cur = cur + 1
+        case While:
+            depth = depth + 1
+            cur = cur + 1
+        case For:
+            depth = depth + 1
+            cur = cur + 1
+        case Match:
+            depth = depth + 1
+            cur = cur + 1
+        case Loop:
+            depth = depth + 1
+            cur = cur + 1
+        case Repeat:
+            depth = depth + 1
+            cur = cur + 1
+        case Struct:
+            depth = depth + 1
+            cur = cur + 1
+        case Enum:
+            depth = depth + 1
+            cur = cur + 1
+        case Trait:
+            depth = depth + 1
+            cur = cur + 1
+        case Apply:
+            depth = depth + 1
+            cur = cur + 1
+        case else:
+            cur = cur + 1
+        end
+    end
+    return cur
+end
+
+public struct TopLevelItem
+    name: string
+    kind_tag: int
+end
+
+public parse_decl_tag(t: tok.Token) -> int
+    match t.kind
+    case Module: return 1
+    case Import: return 2
+    case Struct: return 3
+    case Enum: return 4
+    case Trait: return 5
+    case Apply: return 6
+    case else: return 0
+    end
+end

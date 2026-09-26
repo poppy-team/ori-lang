@@ -1,0 +1,49 @@
+module selfhost.compiler.frontend.resolve.test_resolve
+
+import ori.io as io
+import ori.list as lists
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_item as pi
+import selfhost.compiler.frontend.resolve.resolve as res
+
+main()
+    const struct_src = "struct Point x: int y: int end"
+    const struct_tokens = lex.tokenize_all(struct_src)
+    const struct_parser = pi.new_parser(struct_tokens)
+    const struct_out = pi.parse_struct(struct_parser, 1)
+
+    const enum_src = "enum Direction North South end"
+    const enum_tokens = lex.tokenize_all(enum_src)
+    const enum_parser = pi.new_parser(enum_tokens)
+    const enum_out = pi.parse_enum(enum_parser, 2)
+
+    const ctx = res.new_context()
+
+    match struct_out.item
+    case some(item):
+        res.resolve_item(ctx, item)
+        io.println("RESOLVE_STRUCT_ACCEPTED")
+    case none:
+        io.println("RESOLVE_STRUCT_FAIL")
+    end
+
+    match enum_out.item
+    case some(item):
+        res.resolve_item(ctx, item)
+        io.println("RESOLVE_ENUM_ACCEPTED")
+    case none:
+        io.println("RESOLVE_ENUM_FAIL")
+    end
+
+    match struct_out.item
+    case some(item):
+        res.resolve_item(ctx, item)
+        io.println("RESOLVE_DUPLICATE_TESTED")
+    case none:
+        io.println("RESOLVE_DUP_SOURCE_FAIL")
+    end
+
+    io.println(f"RESOLVE_SYMBOL_COUNT: {lists.len(ctx.global_scope.names)}")
+    io.println(f"RESOLVE_ERROR_COUNT: {res.error_count(ctx)}")
+    io.println("RESOLVE_ALL_PASSED")
+end

@@ -1,0 +1,41 @@
+module selfhost.compiler.frontend.types.exhaustiveness
+
+import ori.list as lists
+
+public struct MatchCheck
+    variants: list[string]
+    covered: list[string]
+    has_else: bool
+end
+
+public alias ExhaustResult = result[bool, string]
+
+public check_exhaustive(m: MatchCheck) -> ExhaustResult
+    if m.has_else
+        return ok(true)
+    end
+
+    var i = 0
+    const total = lists.len(m.variants)
+    while i < total
+        const variant = lists.get(m.variants, i)
+        if not is_covered(m.covered, variant)
+            return err(f"match.non_exhaustive: missing {variant}")
+        end
+        i = i + 1
+    end
+    return ok(true)
+end
+
+is_covered(covered: list[string], variant: string) -> bool
+    var i = 0
+    const total = lists.len(covered)
+    while i < total
+        const cur = lists.get(covered, i)
+        if cur == variant
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end

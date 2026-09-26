@@ -11,7 +11,7 @@ public enum FsError
 end
 
 public parse_fs_error(msg: string) -> FsError
-    if strings.contains(msg, "No such file") or strings.contains(msg, "not found")
+    if strings.contains(msg, "No such file") or strings.contains(msg, "not found") or strings.contains(msg, "cannot find the file specified")
         return FsError.NotFound
     end
     if strings.contains(msg, "Permission denied") or strings.contains(msg, "access denied")

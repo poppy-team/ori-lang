@@ -1,0 +1,42 @@
+module selfhost.compiler.frontend.types.traits
+
+import ori.list as lists
+
+public struct TraitDecl
+    name: string
+    required_methods: list[string]
+end
+
+public struct TypeConformance
+    type_name: string
+    traits: list[string]
+    provided_methods: list[string]
+end
+
+public alias TraitCheckResult = result[bool, string]
+
+public check_conformance(decl: TraitDecl, impl: TypeConformance) -> TraitCheckResult
+    var i = 0
+    const count = lists.len(decl.required_methods)
+    while i < count
+        const required = lists.get(decl.required_methods, i)
+        if not has_method(impl.provided_methods, required)
+            return err(f"trait.missing_method: {decl.name}::{required} not implemented by {impl.type_name}")
+        end
+        i = i + 1
+    end
+    return ok(true)
+end
+
+has_method(methods: list[string], name: string) -> bool
+    var i = 0
+    const count = lists.len(methods)
+    while i < count
+        const cur = lists.get(methods, i)
+        if cur == name
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end

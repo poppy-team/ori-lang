@@ -1,0 +1,30 @@
+module selfhost.compiler.main
+
+import ori.args as cmd_args
+import ori.io as io
+import ori.list as lists
+import ori.os as os
+import selfhost.compiler.driver.args as args
+import selfhost.compiler.driver.pipeline as pipe
+
+main()
+    io.println("=== Ori Experimental Self-Hosted Compiler (Stage 1) ===")
+
+    const raw_args = cmd_args.all()
+    var tokens: list[string] = []
+
+    -- Skip program name (index 0) if present
+    var i = 1
+    const total = lists.len(raw_args)
+    while i < total
+        lists.push(tokens, lists.get(raw_args, i))
+        i = i + 1
+    end
+
+    const parsed = args.parse_cli(tokens)
+    io.println(f"CLI: subcommand={parsed.subcommand} source={parsed.source_file} out={parsed.output_path}")
+
+    const exit_code = pipe.dispatch_file(parsed)
+    io.println(f"EXIT_CODE: {exit_code}")
+    os.exit(exit_code)
+end

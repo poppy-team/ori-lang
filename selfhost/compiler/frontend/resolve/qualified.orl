@@ -1,0 +1,43 @@
+module selfhost.compiler.frontend.resolve.qualified
+
+import ori.list as lists
+import ori.string as su
+
+public struct QualifiedPath
+    segments: list[string]
+end
+
+public parse_qualified(raw_path: string) -> QualifiedPath
+    const segs = su.split(raw_path, ".")
+    return QualifiedPath { segments: segs }
+end
+
+public segment_count(path: QualifiedPath) -> int
+    return lists.len(path.segments)
+end
+
+public base_module_name(path: QualifiedPath) -> string
+    const count = lists.len(path.segments)
+    if count == 0
+        return ""
+    elif count == 1
+        return lists.get(path.segments, 0)
+    end
+
+    -- Return all but the last segment joined by '.'
+    const sub_segs: list[string] = []
+    var i = 0
+    while i < count - 1
+        lists.push(sub_segs, lists.get(path.segments, i))
+        i = i + 1
+    end
+    return su.join(sub_segs, ".")
+end
+
+public final_item_name(path: QualifiedPath) -> string
+    const count = lists.len(path.segments)
+    if count == 0
+        return ""
+    end
+    return lists.get(path.segments, count - 1)
+end

@@ -1,0 +1,55 @@
+module selfhost.compiler.frontend.resolve.resolve
+
+import ori.list as lists
+import selfhost.compiler.frontend.parse.node as node
+import selfhost.compiler.frontend.resolve.scope as sc
+
+public enum ResolveError
+    DuplicateSymbol(name: string)
+    UndefinedSymbol(name: string)
+end
+
+public struct ResolveContext
+    global_scope: sc.Scope
+    errors: list[ResolveError]
+end
+
+public new_context() -> ResolveContext
+    const errs: list[ResolveError] = []
+    return ResolveContext {
+        global_scope: sc.new_scope(),
+        errors: errs
+    }
+end
+
+public resolve_item(ctx: ResolveContext, item: node.ItemNode)
+    match item
+    case Struct(decl):
+        match sc.lookup(ctx.global_scope, decl.name.text)
+        case some(_):
+            lists.push(ctx.errors, ResolveError.DuplicateSymbol(name: decl.name.text))
+        case none:
+            sc.define_symbol(ctx.global_scope, decl.name.text, 1, int(decl.id))
+        end
+    case Enum(decl):
+        match sc.lookup(ctx.global_scope, decl.name.text)
+        case some(_):
+            lists.push(ctx.errors, ResolveError.DuplicateSymbol(name: decl.name.text))
+        case none:
+            sc.define_symbol(ctx.global_scope, decl.name.text, 2, int(decl.id))
+        end
+    case Func(decl):
+        match sc.lookup(ctx.global_scope, decl.name.text)
+        case some(_):
+            lists.push(ctx.errors, ResolveError.DuplicateSymbol(name: decl.name.text))
+        case none:
+            sc.define_symbol(ctx.global_scope, decl.name.text, 3, int(decl.id))
+        end
+    case else:
+        -- Traits, Applies, Imports handled in specialized sub-phases
+    end
+end
+
+public error_count(ctx: ResolveContext) -> int
+    return lists.len(ctx.errors)
+end

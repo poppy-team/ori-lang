@@ -1,0 +1,64 @@
+module selfhost.compiler.hir.lower_expr
+
+import ori.list as lists
+
+public enum FlatOpcode
+    LoadConst
+    Copy
+    AddI
+    SubI
+    MulI
+    CmpEq
+    CmpLt
+end
+
+public struct FlatInstr
+    op: FlatOpcode
+    dest: string
+    src1: string
+    src2: string
+    const_val: int
+end
+
+public struct InstrStream
+    opcodes: list[int]
+    dests: list[string]
+    src1s: list[string]
+    src2s: list[string]
+    consts: list[int]
+end
+
+public new_stream() -> InstrStream
+    const empty_o: list[int] = []
+    const empty_d: list[string] = []
+    const empty_s1: list[string] = []
+    const empty_s2: list[string] = []
+    const empty_c: list[int] = []
+    return InstrStream {
+        opcodes: empty_o,
+        dests: empty_d,
+        src1s: empty_s1,
+        src2s: empty_s2,
+        consts: empty_c
+    }
+end
+
+public emit_load_const(s: InstrStream, dest: string, val: int)
+    lists.push(s.opcodes, 1) -- LoadConst
+    lists.push(s.dests, dest)
+    lists.push(s.src1s, "")
+    lists.push(s.src2s, "")
+    lists.push(s.consts, val)
+end
+
+public emit_add(s: InstrStream, dest: string, left: string, right: string)
+    lists.push(s.opcodes, 3) -- AddI
+    lists.push(s.dests, dest)
+    lists.push(s.src1s, left)
+    lists.push(s.src2s, right)
+    lists.push(s.consts, 0)
+end
+
+public stream_instr_count(s: InstrStream) -> int
+    return lists.len(s.opcodes)
+end

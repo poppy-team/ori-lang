@@ -7108,6 +7108,12 @@ impl<M: Module> NativeBackend<M> {
                 let fref = *func_refs
                     .get(method_name.as_str())
                     .ok_or_else(|| format!("missing Equatable implementation `{method_name}`"))?;
+                // The runtime passes borrowed collection keys to this callback.
+                // Ori methods consume their managed parameters, so transfer a
+                // fresh reference for each argument before invoking the method.
+                let value_ty = Ty::Named(def_id, vec![]);
+                codegen.emit_arc_retain_if_managed(&value_ty, left_ptr)?;
+                codegen.emit_arc_retain_if_managed(&value_ty, right_ptr)?;
                 let call = codegen.builder.ins().call(fref, &[left_ptr, right_ptr]);
                 codegen.builder.inst_results(call)[0]
             } else if matches!(target, EqualityHelperTarget::Struct)
@@ -7237,6 +7243,9 @@ impl<M: Module> NativeBackend<M> {
                 let fref = *func_refs
                     .get(method_name.as_str())
                     .ok_or_else(|| format!("missing Hashable implementation `{method_name}`"))?;
+                // Hash callbacks also receive a borrowed key from the runtime.
+                let value_ty = Ty::Named(def_id, vec![]);
+                codegen.emit_arc_retain_if_managed(&value_ty, value_ptr)?;
                 let call = codegen.builder.ins().call(fref, &[value_ptr]);
                 codegen.builder.inst_results(call)[0]
             } else if codegen
@@ -15547,17 +15556,35 @@ impl<'a> FuncCodegen<'a> {
                         }
                         if let Some(&fref) = self.func_refs.get(name.as_str()) {
                             let call = self.builder.ins().call(fref, &args_v);
+                            let result = self.builder.inst_results(call).first().copied();
+                            // `ori_list_get` borrows the element from its list.
+                            // A call expression hands an owned result to its
+                            // binding/caller, so acquire that reference before
+                            // releasing a temporary list argument. Otherwise a
+                            // later scope cleanup frees an element still in the
+                            // list (or reads it after the list is removed).
+                            if name.as_str() == "ori_list_get" {
+                                if let Some(value) = result {
+                                    // Generic runtime signatures can leave the
+                                    // call result as `Ty::Infer`. The list
+                                    // argument carries the concrete element
+                                    // type needed to decide whether to retain.
+                                    let element_ty = args
+                                        .first()
+                                        .and_then(|arg| match &arg.value.ty {
+                                            Ty::List(element) => Some(element.as_ref()),
+                                            _ => None,
+                                        })
+                                        .unwrap_or(&expr.ty);
+                                    self.emit_arc_retain_if_managed(element_ty, value)?;
+                                }
+                            }
                             // Release fresh managed temporaries passed to
                             // stdlib FFI after the call returns.
                             for (v, ty) in owned_temp_args {
                                 self.emit_arc_release_if_managed(&ty, v)?;
                             }
-                            let res = self.builder.inst_results(call);
-                            if res.is_empty() {
-                                self.builder.ins().iconst(types::I8, 0)
-                            } else {
-                                res[0]
-                            }
+                            result.unwrap_or_else(|| self.builder.ins().iconst(types::I8, 0))
                         } else {
                             return Err(format!(
                                 "missing function reference `{name}` in native codegen"

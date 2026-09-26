@@ -412,6 +412,9 @@ fn module_records(source_path: &Path) -> Result<Vec<ModuleRecord>, String> {
     })?;
     let mut files = Vec::new();
     for input_root in roots {
+        if input_root.as_os_str().is_empty() {
+            continue;
+        }
         collect_inputs(&input_root, &mut files).map_err(|err| {
             format!(
                 "incremental.input_scan_failed: cannot scan `{}`: {err}",
@@ -496,6 +499,9 @@ fn fingerprint(source_path: &Path, options: BuildOptions) -> Result<String, Stri
     })?;
     let mut files = Vec::new();
     for input_root in roots {
+        if input_root.as_os_str().is_empty() {
+            continue;
+        }
         collect_inputs(&input_root, &mut files).map_err(|err| {
             format!(
                 "incremental.input_scan_failed: cannot scan `{}`: {err}",
@@ -669,7 +675,12 @@ fn collect_inputs(root: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> 
         if name == ".git" || name == "target" || name == ".ori" {
             continue;
         }
-        let file_type = entry.file_type()?;
+        // Skip broken symlinks instead of aborting the whole build fingerprint.
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(err),
+        };
         if file_type.is_dir() {
             collect_inputs(&path, files)?;
         } else if file_type.is_file()

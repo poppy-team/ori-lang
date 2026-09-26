@@ -1,0 +1,148 @@
+module selfhost.compiler.bridge.bridge_client
+
+import ori.fs as fs
+import ori.list as lists
+import ori.process as proc
+
+public struct CompileArtifactResult
+    is_ok: bool
+    obj_path: string
+    exe_path: string
+    message: string
+end
+
+public resolve_bridge_server_bin() -> string
+    -- Candidate locations
+    const c1 = "runtime/bin/ori-bridge-server"
+    match fs.exists(c1)
+    case ok(e1):
+        if e1
+            return c1
+        end
+    case err(_):
+    end
+
+    const c2 = "compiler/target/debug/ori-bridge-server"
+    match fs.exists(c2)
+    case ok(e2):
+        if e2
+            return c2
+        end
+    case err(_):
+    end
+
+    return "ori-bridge-server"
+end
+
+public resolve_runtime_static_lib() -> string
+    const r1 = "runtime/x86_64-unknown-linux-gnu/libori_runtime.a"
+    match fs.exists(r1)
+    case ok(e1):
+        if e1
+            return r1
+        end
+    case err(_):
+    end
+
+    const r2 = "compiler/target/debug/libori_runtime.a"
+    match fs.exists(r2)
+    case ok(e2):
+        if e2
+            return r2
+        end
+    case err(_):
+    end
+
+    return ""
+end
+
+public invoke_bridge_and_link(
+    bridge_payload_json: string,
+    obj_path: string,
+    exe_path: string
+) -> CompileArtifactResult
+    const bridge_server_bin = resolve_bridge_server_bin()
+
+    -- 1. Write the payload JSON to a temporary request file
+    const req_file = f"{obj_path}.req.json"
+    match fs.write_text(req_file, bridge_payload_json)
+    case err(e):
+        return CompileArtifactResult {
+            is_ok: false,
+            obj_path: obj_path,
+            exe_path: exe_path,
+            message: f"failed to write bridge request: {e}"
+        }
+    case ok(_):
+    end
+
+    -- 2. Call ori-bridge-server subprocess
+    const bridge_args: list[string] = []
+    lists.push(bridge_args, "--request-file")
+    lists.push(bridge_args, req_file)
+
+    match proc.run_output(bridge_server_bin, bridge_args)
+    case ok(pout):
+        if pout.status != 0
+            return CompileArtifactResult {
+                is_ok: false,
+                obj_path: obj_path,
+                exe_path: exe_path,
+                message: f"bridge server exited with status {pout.status}"
+            }
+        end
+    case err(e):
+        return CompileArtifactResult {
+            is_ok: false,
+            obj_path: obj_path,
+            exe_path: exe_path,
+            message: f"bridge invoke ({bridge_server_bin}): {e}"
+        }
+    end
+
+    -- 3. Invoke native system linker with staged staticlib
+    const linker_args: list[string] = []
+    lists.push(linker_args, obj_path)
+
+    const rt_lib = resolve_runtime_static_lib()
+    if rt_lib != ""
+        lists.push(linker_args, rt_lib)
+    end
+
+    lists.push(linker_args, "-lpthread")
+    lists.push(linker_args, "-ldl")
+    lists.push(linker_args, "-lm")
+    lists.push(linker_args, "-lc")
+    lists.push(linker_args, "-o")
+    lists.push(linker_args, exe_path)
+
+    match proc.run_output("cc", linker_args)
+    case ok(lout):
+        if lout.status != 0
+            const err_msg = match proc.stderr_text(lout)
+                case ok(s): s
+                case err(_): ""
+                end
+            return CompileArtifactResult {
+                is_ok: false,
+                obj_path: obj_path,
+                exe_path: exe_path,
+                message: f"linker failed with status {lout.status}: {err_msg}"
+            }
+        end
+    case err(e):
+        return CompileArtifactResult {
+            is_ok: false,
+            obj_path: obj_path,
+            exe_path: exe_path,
+            message: f"linker invoke: {e}"
+        }
+    end
+
+    return CompileArtifactResult {
+        is_ok: true,
+        obj_path: obj_path,
+        exe_path: exe_path,
+        message: "compilation and link successful"
+    }
+end

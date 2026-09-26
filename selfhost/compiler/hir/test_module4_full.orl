@@ -1,0 +1,57 @@
+module selfhost.compiler.hir.test_module4_full
+
+import ori.io as io
+import selfhost.compiler.hir.arc_insert as ai
+import selfhost.compiler.hir.closure_conv as cc
+import selfhost.compiler.hir.lower_expr as le
+import selfhost.compiler.hir.lower_stmt as ls
+import selfhost.compiler.hir.verify as vf
+
+main()
+    -- 1. Linear lowering of statements
+    const bb = ls.new_block("entry")
+    ls.emit_assign_const(bb, "x", 40)
+    ls.emit_return(bb, "x")
+    io.println(f"LOWER_STMT_COUNT: {ls.block_stmt_count(bb)}")
+
+    -- 2. Flat IR expression stream
+    const stream = le.new_stream()
+    le.emit_load_const(stream, "a", 40)
+    le.emit_load_const(stream, "b", 2)
+    le.emit_add(stream, "c", "a", "b")
+    io.println(f"LOWER_EXPR_INSTRS: {le.stream_instr_count(stream)}")
+
+    -- 3. ARC live intervals
+    const iv = ai.new_intervals()
+    ai.open_interval(iv, "my_list", 0)
+    ai.close_interval(iv, "my_list", 5)
+    ai.open_interval(iv, "leaked_ref", 1)
+    io.println(f"ARC_INTERVALS: {ai.interval_count(iv)}")
+    io.println(f"ARC_LEAKS: {ai.leak_count(iv)}")
+
+    -- 4. Closure conversion environment
+    const env = cc.new_env("__env_main")
+    cc.capture_var(env, "x", "int")
+    cc.capture_var(env, "caption", "string")
+    io.println(f"CLOSURE_CAPTURES: {cc.capture_count(env)}")
+
+    -- 5. HIR verification (positive)
+    match vf.verify_block(bb)
+    case ok(_):
+        io.println("VERIFY_POSITIVE_OK")
+    case err(msg):
+        io.println(f"VERIFY_POSITIVE_FAIL: {msg}")
+    end
+
+    -- 6. HIR verification (negative: unterminated block)
+    const bad_bb = ls.new_block("broken")
+    ls.emit_assign_const(bad_bb, "y", 1)
+    match vf.verify_block(bad_bb)
+    case ok(_):
+        io.println("VERIFY_NEGATIVE_FAIL")
+    case err(msg):
+        io.println(f"VERIFY_NEGATIVE_OK: {msg}")
+    end
+
+    io.println("MODULE4_ALL_TESTS_SUCCESS")
+end

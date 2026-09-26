@@ -1,0 +1,80 @@
+module selfhost.compiler.frontend.parse.parse_func_full
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.func_body_parser as fbp
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_item as pi
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+
+public struct FullFuncFlat
+    name: string
+    ret_ty: string
+    param_count: int
+    param_names: list[string]
+    param_tys: list[string]
+    stmt_count: int
+    next_cursor: int
+    has_func: bool
+end
+
+public parse_function_flat(
+    tokens: list[tok.Token],
+    start_cursor: int,
+    func_id: int,
+    pool: exprs.ExprPool,
+    sp: stmts.StmtPool
+) -> FullFuncFlat
+    var fn_name = ""
+    if start_cursor < lists.len(tokens)
+        const t_head = lists.get(tokens, start_cursor)
+        match t_head.kind
+        case Ident(name):
+            fn_name = name
+        case Public:
+            if start_cursor + 1 < lists.len(tokens)
+                const t_next = lists.get(tokens, start_cursor + 1)
+                match t_next.kind
+                case Ident(name):
+                    fn_name = name
+                case else:
+                end
+            end
+        case else:
+        end
+    end
+
+    const p = pi.Parser { tokens: tokens, cursor: start_cursor, length: lists.len(tokens) }
+    const sig_out = pi.parse_func_signature(p, func_id)
+
+    match sig_out.item
+    case some(item):
+        match item
+        case Func(decl):
+            const body_out = fbp.parse_statements_until_end(tokens, sig_out.next.cursor, pool, sp)
+            const names: list[string] = []
+            const tys: list[string] = []
+            var i = 0
+            while i < lists.len(decl.params)
+                const param = lists.get(decl.params, i)
+                lists.push(names, param.name.text)
+                lists.push(tys, param.ty)
+                i = i + 1
+            end
+            return FullFuncFlat {
+                name: fn_name,
+                ret_ty: decl.ret_ty,
+                param_count: lists.len(decl.params),
+                param_names: names,
+                param_tys: tys,
+                stmt_count: lists.len(body_out.stmt_ids),
+                next_cursor: body_out.next_cursor,
+                has_func: true
+            }
+        case else:
+            return FullFuncFlat { name: "", ret_ty: "", param_count: 0, param_names: [], param_tys: [], stmt_count: 0, next_cursor: start_cursor + 1, has_func: false }
+        end
+    case none:
+        return FullFuncFlat { name: "", ret_ty: "", param_count: 0, param_names: [], param_tys: [], stmt_count: 0, next_cursor: start_cursor + 1, has_func: false }
+    end
+end

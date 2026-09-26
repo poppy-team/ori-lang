@@ -1,0 +1,307 @@
+module selfhost.compiler.frontend.parse.file_parser
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.decl_and_recovery as dr
+import selfhost.compiler.frontend.parse.node as node
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+import selfhost.compiler.frontend.parse.parse_func_full as pff
+import selfhost.compiler.frontend.parse.parse_import as pi
+import selfhost.compiler.frontend.parse.parse_item as pitem
+import selfhost.compiler.frontend.parse.parse_stmt as stmts
+
+public struct ParsedFile
+    module_name: string
+    import_paths: list[string]
+    import_aliases: list[string]
+    func_names: list[string]
+    func_ret_tys: list[string]
+    func_param_counts: list[int]
+    func_param_names: list[string]
+    func_param_tys: list[string]
+    func_first_stmt_idx: list[int]
+    func_last_stmt_idx: list[int]
+    func_is_public: list[int]
+    struct_names: list[string]
+    struct_is_public: list[int]
+    enum_names: list[string]
+    enum_is_public: list[int]
+    newtype_names: list[string]
+    item_kinds: list[int]
+    item_names: list[string]
+    items: list[node.ItemNode]
+    stmt_ids: list[int]
+    stmt_kind_tags: list[int]
+    stmt_expr_ids: list[int]
+    stmt_target_names: list[string]
+    stmt_type_annotations: list[string]
+    stmt_mutable_flags: list[int]
+    stmt_branch_starts: list[int]
+    stmt_subtree_ends: list[int]
+    expr_kind_tags: list[int]
+    expr_left_ids: list[int]
+    expr_right_ids: list[int]
+    expr_third_ids: list[int]
+    expr_str_vals: list[string]
+    expr_call_arg_starts: list[int]
+    expr_call_arg_counts: list[int]
+    expr_call_arg_ids: list[int]
+    expr_count: int
+    item_count: int
+    codegen_complete: bool
+end
+
+public parse_entire_file(tokens: list[tok.Token]) -> ParsedFile
+    const pool = exprs.new_pool()
+    const sp = stmts.new_stmt_pool()
+
+    var cur = 0
+    const total = lists.len(tokens)
+    const items: list[node.ItemNode] = []
+    const empty_ids: list[int] = []
+    const f_names: list[string] = []
+    const import_paths: list[string] = []
+    const import_aliases: list[string] = []
+    const f_rets: list[string] = []
+    const f_params: list[int] = []
+    const f_param_names: list[string] = []
+    const f_param_tys: list[string] = []
+    const f_first_stmts: list[int] = []
+    const f_last_stmts: list[int] = []
+    const f_pub: list[int] = []
+    const s_names: list[string] = []
+    const s_pub: list[int] = []
+    const e_names: list[string] = []
+    const e_pub: list[int] = []
+    const n_names: list[string] = []
+    var mod_name = "main"
+    var pending_public = false
+    var codegen_complete = true
+
+    -- 1. Check for optional module declaration
+    match pi.parse_module_header(tokens, cur)
+    case some(header_out):
+        mod_name = header_out.name
+        cur = header_out.next_cursor
+    case none:
+    end
+
+    -- 2. Fast declaration scanner loop
+    var next_id = 1
+    while cur < total
+        const prev_cur = cur
+        const t = lists.get(tokens, cur)
+        match t.kind
+        case Import:
+            match pi.parse_import_decl(tokens, cur)
+            case some(out):
+                lists.push(import_paths, out.import_node.module_path)
+                lists.push(import_aliases, out.import_node.alias_name)
+                if out.next_cursor > cur
+                    cur = out.next_cursor
+                else
+                    cur = cur + 1
+                end
+            case none:
+                codegen_complete = false
+                cur = cur + 1
+            end
+        case Struct:
+            -- The experimental bridge cannot serialize user-defined types.
+            codegen_complete = false
+            const s_parser = pitem.Parser { tokens: tokens, cursor: cur, length: total }
+            const s_out = pitem.parse_struct(s_parser, next_id)
+            match s_out.item
+            case some(item):
+                match item
+                case Struct(decl):
+                    lists.push(s_names, decl.name.text)
+                    lists.push(s_pub, if pending_public then 1 else 0)
+                case else:
+                end
+                pending_public = false
+                if s_out.next.cursor > cur
+                    cur = s_out.next.cursor
+                else
+                    cur = cur + 1
+                end
+                next_id = next_id + 1
+            case none:
+                cur = dr.skip_to_sync(tokens, cur + 1)
+            end
+        case Enum:
+            codegen_complete = false
+            const e_parser = pitem.Parser { tokens: tokens, cursor: cur, length: total }
+            const e_out = pitem.parse_enum(e_parser, next_id)
+            match e_out.item
+            case some(item):
+                match item
+                case Enum(decl):
+                    lists.push(e_names, decl.name.text)
+                    lists.push(e_pub, if pending_public then 1 else 0)
+                case else:
+                end
+                pending_public = false
+                if e_out.next.cursor > cur
+                    cur = e_out.next.cursor
+                else
+                    cur = cur + 1
+                end
+                next_id = next_id + 1
+            case none:
+                cur = dr.skip_to_sync(tokens, cur + 1)
+            end
+        case Newtype:
+            codegen_complete = false
+            if cur + 1 < total
+                const name_token = lists.get(tokens, cur + 1)
+                match name_token.kind
+                case Ident(name):
+                    lists.push(n_names, name)
+                    cur = cur + 2
+                case else:
+                    cur = cur + 1
+                end
+            else
+                cur = cur + 1
+            end
+            pending_public = false
+        case Public:
+            pending_public = true
+            cur = cur + 1
+        case Ident(name):
+            if cur + 1 < total
+                const next_tok = lists.get(tokens, cur + 1)
+                match next_tok.kind
+                case LParen:
+                    const start_stmt_count = lists.len(sp.kind_tags)
+                    const full_out = pff.parse_function_flat(tokens, cur, next_id, pool, sp)
+                    if full_out.has_func
+                        lists.push(f_names, full_out.name)
+                        lists.push(f_rets, full_out.ret_ty)
+                        lists.push(f_params, full_out.param_count)
+                        var param_idx = 0
+                        while param_idx < full_out.param_count
+                            lists.push(f_param_names, lists.get(full_out.param_names, param_idx))
+                            lists.push(f_param_tys, lists.get(full_out.param_tys, param_idx))
+                            param_idx = param_idx + 1
+                        end
+                        lists.push(f_first_stmts, start_stmt_count)
+                        lists.push(f_last_stmts, lists.len(sp.kind_tags))
+                        lists.push(f_pub, if pending_public then 1 else 0)
+                        pending_public = false
+                        if full_out.next_cursor > cur
+                            cur = full_out.next_cursor
+                        else
+                            cur = cur + 1
+                        end
+                        next_id = next_id + 1
+                    else
+                        codegen_complete = false
+                        cur = cur + 1
+                    end
+                case else:
+                    codegen_complete = false
+                    cur = cur + 1
+                end
+            else
+                codegen_complete = false
+                cur = cur + 1
+            end
+        case Const:
+            -- Top-level const declaration: const name: ty = value
+            codegen_complete = false
+            cur = cur + 1
+        case Extern:
+            codegen_complete = false
+            -- Extern block: extern "C" ... end -- skip with depth tracking
+            var e_cur = cur + 1
+            var e_depth = 1
+            while e_cur < total and e_depth > 0
+                const et = lists.get(tokens, e_cur)
+                match et.kind
+                case End:
+                    e_depth = e_depth - 1
+                    e_cur = e_cur + 1
+                case Extern:
+                    e_depth = e_depth + 1
+                    e_cur = e_cur + 1
+                case else:
+                    e_cur = e_cur + 1
+                end
+            end
+            if e_cur > cur
+                cur = e_cur
+            else
+                cur = cur + 1
+            end
+        case else:
+            codegen_complete = false
+            cur = cur + 1
+        end
+
+        if cur <= prev_cur
+            cur = prev_cur + 1
+        end
+    end
+
+    const empty_kinds: list[int] = []
+    const empty_names: list[string] = []
+    const expr_total = exprs.total_exprs(pool)
+    var stmt_idx = 0
+    while stmt_idx < lists.len(sp.kind_tags)
+        if lists.get(sp.kind_tags, stmt_idx) == 0
+            codegen_complete = false
+        end
+        stmt_idx = stmt_idx + 1
+    end
+    var expr_idx = 0
+    while expr_idx < expr_total
+        const tag = lists.get(pool.kind_tags, expr_idx)
+        if tag == 0 or (tag >= 8 and tag != 11 and tag != 13)
+            codegen_complete = false
+        end
+        expr_idx = expr_idx + 1
+    end
+
+    return ParsedFile {
+        module_name: mod_name,
+        import_paths: import_paths,
+        import_aliases: import_aliases,
+        func_names: f_names,
+        func_ret_tys: f_rets,
+        func_param_counts: f_params,
+        func_param_names: f_param_names,
+        func_param_tys: f_param_tys,
+        func_first_stmt_idx: f_first_stmts,
+        func_last_stmt_idx: f_last_stmts,
+        func_is_public: f_pub,
+        struct_names: s_names,
+        struct_is_public: s_pub,
+        enum_names: e_names,
+        enum_is_public: e_pub,
+        newtype_names: n_names,
+        item_kinds: empty_kinds,
+        item_names: empty_names,
+        items: items,
+        stmt_ids: empty_ids,
+        stmt_kind_tags: sp.kind_tags,
+        stmt_expr_ids: sp.expr_ids,
+        stmt_target_names: sp.target_names,
+        stmt_type_annotations: sp.type_annotations,
+        stmt_mutable_flags: sp.mutable_flags,
+        stmt_branch_starts: sp.branch_starts,
+        stmt_subtree_ends: sp.subtree_ends,
+        expr_kind_tags: pool.kind_tags,
+        expr_left_ids: pool.left_ids,
+        expr_right_ids: pool.right_ids,
+        expr_third_ids: pool.third_ids,
+        expr_str_vals: pool.str_vals,
+        expr_call_arg_starts: pool.call_arg_starts,
+        expr_call_arg_counts: pool.call_arg_counts,
+        expr_call_arg_ids: pool.call_arg_ids,
+        expr_count: expr_total,
+        item_count: next_id - 1,
+        codegen_complete: codegen_complete
+    }
+end

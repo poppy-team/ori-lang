@@ -1,0 +1,47 @@
+module selfhost.compiler.frontend.parse.test_f345_full
+
+import ori.io as io
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.control_flow as cf
+import selfhost.compiler.frontend.parse.parse_expr as pe
+
+main()
+    const pool = pe.new_pool()
+
+    -- 1. Loop headers
+    const t_while = lex.tokenize_all("while x < 10")
+    match cf.parse_loop_header(t_while, 0, pool)
+    case some(h):
+        io.println(f"WHILE_HEADER_OK: tag={h.kind_tag}")
+    case none:
+        io.println("WHILE_HEADER_FAIL")
+    end
+
+    const t_for = lex.tokenize_all("for item in list")
+    match cf.parse_loop_header(t_for, 0, pool)
+    case some(h):
+        io.println(f"FOR_HEADER_OK: tag={h.kind_tag}")
+    case none:
+        io.println("FOR_HEADER_FAIL")
+    end
+
+    -- 2. Match arm with pattern
+    const t_arm = lex.tokenize_all("case Circle:")
+    match cf.parse_match_arm(t_arm, 0)
+    case some(arm):
+        io.println(f"MATCH_ARM_OK: pat={arm.pat_text}")
+    case none:
+        io.println("MATCH_ARM_FAIL")
+    end
+
+    -- 3. Using statement
+    const t_using = lex.tokenize_all("using file = open(\"data.txt\")")
+    match cf.parse_using(t_using, 0)
+    case some(u):
+        io.println(f"USING_OK: binding={u.binding_name}")
+    case none:
+        io.println("USING_FAIL")
+    end
+
+    io.println("F345_SUITE_SUCCESS")
+end

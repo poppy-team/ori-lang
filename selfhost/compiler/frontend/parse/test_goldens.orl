@@ -1,0 +1,67 @@
+module selfhost.compiler.frontend.parse.test_goldens
+
+import ori.io as io
+import selfhost.compiler.frontend.lex.lexer as lex
+import selfhost.compiler.frontend.parse.parse_expr as pe
+import selfhost.compiler.frontend.parse.parse_import as pi
+import selfhost.compiler.frontend.parse.parse_pat as pp
+import selfhost.compiler.frontend.parse.parse_stmt as ps
+import selfhost.compiler.frontend.parse.parse_ty as pt
+
+main()
+    -- 1. Test expression parsing: binary + call + pipe
+    const expr_pool = pe.new_pool()
+    const expr_tokens = lex.tokenize_all("1 + 2 |> print")
+    const bin_out = pe.parse_binary(expr_tokens, 0, expr_pool)
+    match bin_out
+    case some(_):
+        io.println("GOLDEN_EXPR_OK")
+    case none:
+        io.println("GOLDEN_EXPR_FAIL")
+    end
+
+    -- 2. Test statement parsing: let + return
+    const stmt_pool = ps.new_stmt_pool()
+    const stmt_tokens = lex.tokenize_all("const x: int = 42")
+    const stmt_out = ps.parse_statement(stmt_tokens, 0, expr_pool, stmt_pool)
+    match stmt_out
+    case some(_):
+        io.println("GOLDEN_STMT_OK")
+    case none:
+        io.println("GOLDEN_STMT_FAIL")
+    end
+
+    -- 3. Test pattern parsing: variant with payload
+    const pat_pool = pp.new_pat_pool()
+    const pat_tokens = lex.tokenize_all("Circle(radius)")
+    const pat_out = pp.parse_pattern(pat_tokens, 0, pat_pool)
+    match pat_out
+    case some(_):
+        io.println("GOLDEN_PAT_OK")
+    case none:
+        io.println("GOLDEN_PAT_FAIL")
+    end
+
+    -- 4. Test type ref parsing: composite list[T]
+    const ty_pool = pt.new_ty_pool()
+    const ty_tokens = lex.tokenize_all("list[int]")
+    const ty_out = pt.parse_type_ref(ty_tokens, 0, ty_pool)
+    match ty_out
+    case some(_):
+        io.println("GOLDEN_TY_OK")
+    case none:
+        io.println("GOLDEN_TY_FAIL")
+    end
+
+    -- 5. Test import declaration: import path as alias
+    const imp_tokens = lex.tokenize_all("import ori.io as io")
+    const imp_out = pi.parse_import_decl(imp_tokens, 0)
+    match imp_out
+    case some(res):
+        io.println(f"GOLDEN_IMPORT_OK: path={res.import_node.module_path} as={res.import_node.alias_name}")
+    case none:
+        io.println("GOLDEN_IMPORT_FAIL")
+    end
+
+    io.println("ONDA1_PARSER_COMPLETE_SUCCESS")
+end

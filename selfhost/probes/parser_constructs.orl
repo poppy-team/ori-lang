@@ -1,0 +1,53 @@
+module selfhost.probes.parser_constructs
+
+import ori.io as io
+import ori.list as lists
+
+enum ExprKind
+    Literal(value: int)
+    Add(left: int, right: int)
+    IfExpr(cond: bool, then_val: int, else_val: int)
+end
+
+eval_kind(e: ExprKind) -> int
+    match e
+    case Literal(value):
+        return value
+    case Add(left, right):
+        return left + right
+    case IfExpr(cond, then_val, else_val):
+        if cond
+            return then_val
+        else
+            return else_val
+        end
+    end
+    return 0
+end
+
+struct Field
+    name: string
+    ty: string
+end
+
+struct StructDef
+    name: string
+    fields: list[Field]
+end
+
+main()
+    const lit: ExprKind = ExprKind.Literal(value: 42)
+    const add: ExprKind = ExprKind.Add(left: 20, right: 22)
+    const cond: ExprKind = ExprKind.IfExpr(cond: true, then_val: 1, else_val: 2)
+
+    io.println(f"PROBE_OK literal={eval_kind(lit)}")
+    io.println(f"PROBE_OK add={eval_kind(add)}")
+    io.println(f"PROBE_OK ifexpr={eval_kind(cond)}")
+
+    const fields: list[Field] = [
+        Field { name: "x", ty: "int" },
+        Field { name: "y", ty: "int" }
+    ]
+    const def: StructDef = StructDef { name: "Point", fields: fields }
+    io.println(f"PROBE_OK struct={def.name} fields={lists.len(def.fields)}")
+end

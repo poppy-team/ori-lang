@@ -2,14 +2,12 @@ module app.main
 
 -- A small Linux-oriented log report command. Pass a log file as argument 1
 -- and an optional output path as argument 2.
-imports
-    app.report = report
-    app.stats = stats
-    ori.args = args
-    ori.fs = fs
-    ori.io = io
-    ori.path = path
-end
+import app.report as report
+import app.stats as stats
+import ori.args as args
+import ori.fs as fs
+import ori.io as io
+import ori.path as path
 
 const DEFAULT_LOG: string = "examples/linux_log_report/sample.log"
 

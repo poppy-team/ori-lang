@@ -12,6 +12,7 @@ members = [
     "crates/ori-embed",
     "crates/ori-lsp",
     "crates/ori-driver",
+    "crates/ori-bridge-server",
 ]
 
 [workspace.package]
@@ -66,3 +67,4 @@ ori-codegen     = { path = "crates/ori-codegen" }
 ori-runtime     = { path = "crates/ori-runtime" }
 ori-driver      = { path = "crates/ori-driver" }
 ori-embed       = { path = "crates/ori-embed" }
+ori-bridge-server = { path = "crates/ori-bridge-server" }

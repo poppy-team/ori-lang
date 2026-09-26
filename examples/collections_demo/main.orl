@@ -1,18 +1,16 @@
 module app.collections
 
 -- Single collections tour (queue/stack/deque/tree/… demos were merged here).
-imports
-    ori.deque = deque
-    ori.doubly_linked_list = dll
-    ori.hash_table = hash_table
-    ori.io = io
-    ori.linked_list = ll
-    ori.list = lists
-    ori.map = maps
-    ori.queue = queue
-    ori.stack = stack
-    ori.tree = tree
-end
+import ori.deque as deque
+import ori.doubly_linked_list as dll
+import ori.hash_table as hash_table
+import ori.io as io
+import ori.linked_list as ll
+import ori.list as lists
+import ori.map as maps
+import ori.queue as queue
+import ori.stack as stack
+import ori.tree as tree
 
 main()
     io.print("Collections tour")

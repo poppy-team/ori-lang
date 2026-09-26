@@ -1,0 +1,29 @@
+module selfhost.compiler.frontend.diag.test_diag_full
+
+import ori.io as io
+import selfhost.compiler.frontend.diag.sink as ds
+import selfhost.compiler.frontend.diag.source_map as sm
+
+main()
+    -- 1. Test DiagnosticSink emission
+    const sink = ds.new_sink()
+    ds.emit_error(sink, "name.undefined", "variable `x` not found", "declare it with const or var")
+    ds.emit_warning(sink, "lint.unused_variable", "variable `y` is never used", "remove or prefix with `_`")
+    io.println(f"SINK_TOTAL: {ds.total_count(sink)}")
+    io.println(f"SINK_ERRORS: {ds.error_count(sink)}")
+    io.println(f"SINK_WARNINGS: {ds.warning_count(sink)}")
+    io.println(f"SINK_MSG: {ds.diagnostic_message_at(sink, 0)}")
+
+    -- 2. Test SourceFile and Line/Col computation
+    const src = "line1\nline two with error\nline three"
+    const file = sm.new_source_file("main.orl", src)
+    const lc = sm.offset_to_line_col(file, 6) -- Start of 'line two'
+    io.println(f"LINE_COL: line={lc.line} col={lc.col}")
+
+    -- 3. Test Error Snippet Rendering
+    const snippet = sm.render_error_snippet(file, 2, 5, 3)
+    io.println("RENDERED_SNIPPET:")
+    io.println(snippet)
+
+    io.println("F_DIAG_SUITE_SUCCESS")
+end

@@ -1,11 +1,9 @@
 module app.cli_args
 
 -- CLI with ori.args (not async tasks).
-imports
-    ori.args = args
-    ori.io = io
-    ori.list = lists
-end
+import ori.args as args
+import ori.io as io
+import ori.list as lists
 
 struct Task
     title: string

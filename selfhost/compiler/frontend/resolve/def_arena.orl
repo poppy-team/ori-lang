@@ -1,0 +1,71 @@
+module selfhost.compiler.frontend.resolve.def_arena
+
+import ori.list as lists
+
+public enum DefKind
+    Struct
+    Enum
+    Trait
+    Func
+    Const
+    Var
+    TypeAlias
+    Newtype
+    Extern
+end
+
+public struct DefArena
+    def_names: list[string]
+    def_paths: list[string]
+    def_kind_codes: list[int]
+end
+
+public new_arena() -> DefArena
+    const empty_n: list[string] = []
+    const empty_p: list[string] = []
+    const empty_k: list[int] = []
+    return DefArena {
+        def_names: empty_n,
+        def_paths: empty_p,
+        def_kind_codes: empty_k
+    }
+end
+
+public def_kind_to_int(kind: DefKind) -> int
+    match kind
+    case Struct: return 1
+    case Enum: return 2
+    case Trait: return 3
+    case Func: return 4
+    case Const: return 5
+    case Var: return 6
+    case TypeAlias: return 7
+    case Newtype: return 8
+    case Extern: return 9
+    end
+    return 0
+end
+
+public alloc_def(arena: DefArena, name: string, path: string, kind: DefKind) -> int
+    const id = lists.len(arena.def_names)
+    lists.push(arena.def_names, name)
+    lists.push(arena.def_paths, path)
+    lists.push(arena.def_kind_codes, def_kind_to_int(kind))
+    return id
+end
+
+public lookup_by_name(arena: DefArena, name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(arena.def_names)
+    while i < count
+        if lists.get(arena.def_names, i) == name
+            return some(i)
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public def_count(arena: DefArena) -> int
+    return lists.len(arena.def_names)
+end

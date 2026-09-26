@@ -11,6 +11,7 @@ This directory is the canonical home for durable Architecture Decision Records (
 | [ADR-0003](adr/0003-defer-copy-on-write-collections.md) | Defer copy-on-write collection semantics | accepted | 2026-07-18 | — |
 | [ADR-0004](adr/0004-repository-and-project-layout.md) | Keep the Cargo workspace under `compiler/` and use root-first Ori projects | accepted | 2026-07-13 | — |
 | [ADR-0005](adr/0005-deprecate-and-retire-c-backend.md) | Retire the C backend; retain the native reference pipeline | accepted | 2026-09-05 | — |
+| [ADR-0006](adr/0006-selfhost-modular-architecture.md) | Modular architecture, strict boundaries, and self-host compiler decomposition for Marco B | proposed | 2026-09-07 | — |
 
 ## What belongs in an ADR
 

@@ -1,0 +1,170 @@
+module selfhost.compiler.frontend.parse.parse_ty
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.node as node
+
+public struct TyPool
+    types: list[node.TyNode]
+end
+
+public new_ty_pool() -> TyPool
+    const empty_types: list[node.TyNode] = []
+    return TyPool { types: empty_types }
+end
+
+public alloc_ty(pool: TyPool, kind: node.TyKind, span: tok.Span) -> int
+    const id = lists.len(pool.types)
+    lists.push(pool.types, node.TyNode {
+        id: node.NodeId(id),
+        kind: kind,
+        span: span
+    })
+    return id
+end
+
+public struct ParseTyOut
+    ty_id: int
+    next_cursor: int
+end
+
+public parse_type_ref(tokens: list[tok.Token], cursor: int, pool: TyPool) -> optional[ParseTyOut]
+    if cursor >= lists.len(tokens)
+        return none
+    end
+
+    const t = lists.get(tokens, cursor)
+    match t.kind
+    case Ident(name):
+        const base_name = name
+        if cursor + 1 < lists.len(tokens)
+            const next_tok = lists.get(tokens, cursor + 1)
+            match next_tok.kind
+            case LBracket:
+                return parse_bracketed_type(tokens, cursor + 2, base_name, t.span, pool)
+            case else:
+                const id = alloc_ty(pool, node.TyKind.Named(name: base_name), t.span)
+                return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+            end
+        end
+        const id = alloc_ty(pool, node.TyKind.Named(name: base_name), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case List:
+        if cursor + 1 < lists.len(tokens)
+            const open = lists.get(tokens, cursor + 1)
+            match open.kind
+            case LBracket:
+                return parse_bracketed_type(tokens, cursor + 2, "list", t.span, pool)
+            case else:
+            end
+        end
+        return none
+    case Set:
+        return parse_keyword_container(tokens, cursor, pool, "set")
+    case Map:
+        return parse_keyword_container(tokens, cursor, pool, "map")
+    case Optional:
+        return parse_keyword_container(tokens, cursor, pool, "optional")
+    case ResultKw:
+        return parse_keyword_container(tokens, cursor, pool, "result")
+    case IntTy:
+        const id = alloc_ty(pool, node.TyKind.Primitive(name: "int"), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case StringTy:
+        const id = alloc_ty(pool, node.TyKind.Primitive(name: "string"), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case BoolTy:
+        const id = alloc_ty(pool, node.TyKind.Primitive(name: "bool"), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case FloatTy:
+        const id = alloc_ty(pool, node.TyKind.Primitive(name: "float"), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case Void:
+        const id = alloc_ty(pool, node.TyKind.Primitive(name: "void"), t.span)
+        return some(ParseTyOut { ty_id: id, next_cursor: cursor + 1 })
+    case else:
+        return none
+    end
+end
+
+parse_keyword_container(
+    tokens: list[tok.Token],
+    cursor: int,
+    pool: TyPool,
+    base_name: string
+) -> optional[ParseTyOut]
+    if cursor + 1 >= lists.len(tokens)
+        return none
+    end
+    const open = lists.get(tokens, cursor + 1)
+    match open.kind
+    case LBracket:
+        const t = lists.get(tokens, cursor)
+        return parse_bracketed_type(tokens, cursor + 2, base_name, t.span, pool)
+    case else:
+        return none
+    end
+end
+
+parse_bracketed_type(
+    tokens: list[tok.Token],
+    start_cursor: int,
+    base_name: string,
+    span: tok.Span,
+    pool: TyPool
+) -> optional[ParseTyOut]
+    match parse_type_ref(tokens, start_cursor, pool)
+    case none:
+        return none
+    case some(first_out):
+        var cur = first_out.next_cursor
+        if cur >= lists.len(tokens)
+            return none
+        end
+
+        const next_tok = lists.get(tokens, cur)
+        match next_tok.kind
+        case RBracket:
+            -- Single-arg container: list[T], optional[T], set[T], buffer[T], slice[T]
+            if base_name == "list"
+                const id = alloc_ty(pool, node.TyKind.ListOf(elem_name: "T"), span)
+                return some(ParseTyOut { ty_id: id, next_cursor: cur + 1 })
+            elif base_name == "optional"
+                const id = alloc_ty(pool, node.TyKind.OptionalOf(elem_name: "T"), span)
+                return some(ParseTyOut { ty_id: id, next_cursor: cur + 1 })
+            else
+                const id = alloc_ty(pool, node.TyKind.Generic(base_name: base_name, param_names: ["T"]), span)
+                return some(ParseTyOut { ty_id: id, next_cursor: cur + 1 })
+            end
+        case Comma:
+            -- Two-arg container: result[T, E], map[K, V]
+            match parse_type_ref(tokens, cur + 1, pool)
+            case none:
+                return none
+            case some(second_out):
+                var second_cur = second_out.next_cursor
+                if second_cur >= lists.len(tokens)
+                    return none
+                end
+                const close_bracket = lists.get(tokens, second_cur)
+                match close_bracket.kind
+                case RBracket:
+                    if base_name == "result"
+                        const id = alloc_ty(pool, node.TyKind.ResultOf(ok_name: "T", err_name: "E"), span)
+                        return some(ParseTyOut { ty_id: id, next_cursor: second_cur + 1 })
+                    elif base_name == "map"
+                        const id = alloc_ty(pool, node.TyKind.Generic(base_name: "map", param_names: ["K", "V"]), span)
+                        return some(ParseTyOut { ty_id: id, next_cursor: second_cur + 1 })
+                    else
+                        const id = alloc_ty(pool, node.TyKind.Generic(base_name: base_name, param_names: ["A", "B"]), span)
+                        return some(ParseTyOut { ty_id: id, next_cursor: second_cur + 1 })
+                    end
+                case else:
+                    return none
+                end
+            end
+        case else:
+            return none
+        end
+    end
+end

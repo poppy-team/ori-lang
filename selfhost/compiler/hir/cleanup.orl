@@ -1,0 +1,60 @@
+module selfhost.compiler.hir.cleanup
+
+import ori.list as lists
+
+public enum OwnershipOp
+    Retain
+    Release
+    Move
+end
+
+public struct CleanupSite
+    binding_name: string
+    op: OwnershipOp
+    sequence: int
+end
+
+public struct CleanupPlan
+    sites: list[string]
+    op_codes: list[int]
+end
+
+public new_plan() -> CleanupPlan
+    const empty_sites: list[string] = []
+    const empty_ops: list[int] = []
+    return CleanupPlan {
+        sites: empty_sites,
+        op_codes: empty_ops
+    }
+end
+
+public emit_retain(plan: CleanupPlan, binding: string)
+    lists.push(plan.sites, binding)
+    lists.push(plan.op_codes, 1)
+end
+
+public emit_release(plan: CleanupPlan, binding: string)
+    lists.push(plan.sites, binding)
+    lists.push(plan.op_codes, 2)
+end
+
+public site_count(plan: CleanupPlan) -> int
+    return lists.len(plan.sites)
+end
+
+public is_balanced(plan: CleanupPlan) -> bool
+    var retains = 0
+    var releases = 0
+    var i = 0
+    const count = lists.len(plan.op_codes)
+    while i < count
+        const code = lists.get(plan.op_codes, i)
+        if code == 1
+            retains = retains + 1
+        elif code == 2
+            releases = releases + 1
+        end
+        i = i + 1
+    end
+    return retains == releases
+end

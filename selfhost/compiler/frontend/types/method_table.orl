@@ -1,0 +1,68 @@
+module selfhost.compiler.frontend.types.method_table
+
+import ori.list as lists
+import selfhost.compiler.frontend.diag.sink as ds
+
+public struct MethodTable
+    type_names: list[string]
+    methods: list[string]
+    param_counts: list[int]
+    ret_tags: list[int]
+end
+
+public new_method_table() -> MethodTable
+    const empty_t: list[string] = []
+    const empty_m: list[string] = []
+    const empty_p: list[int] = []
+    const empty_r: list[int] = []
+    return MethodTable {
+        type_names: empty_t,
+        methods: empty_m,
+        param_counts: empty_p,
+        ret_tags: empty_r
+    }
+end
+
+public register_method(table: MethodTable, type_name: string, method_name: string, param_count: int, ret_tag: int)
+    lists.push(table.type_names, type_name)
+    lists.push(table.methods, method_name)
+    lists.push(table.param_counts, param_count)
+    lists.push(table.ret_tags, ret_tag)
+end
+
+public resolve_method(table: MethodTable, type_name: string, method_name: string) -> optional[int]
+    var i = 0
+    const count = lists.len(table.type_names)
+    while i < count
+        if lists.get(table.type_names, i) == type_name and lists.get(table.methods, i) == method_name
+            return some(i)
+        end
+        i = i + 1
+    end
+    return none
+end
+
+public check_method_call(
+    table: MethodTable,
+    sink: ds.DiagnosticSink,
+    type_name: string,
+    method_name: string,
+    given_args: int
+) -> bool
+    match resolve_method(table, type_name, method_name)
+    case none:
+        ds.emit_error(sink, "type.method_not_found", "method " + type_name + "." + method_name + " not found", "declare it in the struct body or via apply")
+        return false
+    case some(idx):
+        const expected = lists.get(table.param_counts, idx)
+        if given_args != expected
+            ds.emit_error(sink, "type.arity_mismatch", "method expects " + method_name + " with different arity", "adjust the call arguments")
+            return false
+        end
+        return true
+    end
+end
+
+public method_count(table: MethodTable) -> int
+    return lists.len(table.type_names)
+end

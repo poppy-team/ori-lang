@@ -1,0 +1,129 @@
+module selfhost.compiler.frontend.parse.struct_and_closure
+
+import ori.list as lists
+import selfhost.compiler.frontend.lex.token as tok
+import selfhost.compiler.frontend.parse.parse_expr as exprs
+
+public struct StructFieldInit
+    name: string
+    expr_id: int
+end
+
+public struct StructLitOut
+    type_name: string
+    field_names: list[string]
+    expr_ids: list[int]
+    next_cursor: int
+end
+
+public parse_struct_literal(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[StructLitOut]
+    if cursor + 1 >= lists.len(tokens)
+        return none
+    end
+
+    const name_tok = lists.get(tokens, cursor)
+    match name_tok.kind
+    case Ident(name):
+        const t_name = name
+        const brace_tok = lists.get(tokens, cursor + 1)
+        match brace_tok.kind
+        case LBrace:
+            const f_names: list[string] = []
+            const f_exprs: list[int] = []
+            var cur = cursor + 2
+
+            while cur < lists.len(tokens)
+                const t = lists.get(tokens, cur)
+                match t.kind
+                case RBrace:
+                    return some(StructLitOut {
+                        type_name: t_name,
+                        field_names: f_names,
+                        expr_ids: f_exprs,
+                        next_cursor: cur + 1
+                    })
+                case Comma:
+                    cur = cur + 1
+                case Ident(name):
+                    const f_name = name
+                    if cur + 2 < lists.len(tokens)
+                        const colon = lists.get(tokens, cur + 1)
+                        match colon.kind
+                        case Colon:
+                            match exprs.parse_primary(tokens, cur + 2, pool)
+                            case some(out):
+                                lists.push(f_names, f_name)
+                                lists.push(f_exprs, out.expr_id)
+                                cur = out.next_cursor
+                            case none:
+                                return none
+                            end
+                        case else:
+                            return none
+                        end
+                    else
+                        return none
+                    end
+                case else:
+                    return none
+                end
+            end
+            return none
+        case else:
+            return none
+        end
+    case else:
+        return none
+    end
+end
+
+public struct ClosureOut
+    param_names: list[string]
+    body_expr_id: int
+    next_cursor: int
+end
+
+public parse_inline_closure(tokens: list[tok.Token], cursor: int, pool: exprs.ExprPool) -> optional[ClosureOut]
+    -- Pattern: `(x) => expr`
+    if cursor + 4 >= lists.len(tokens)
+        return none
+    end
+
+    const lp = lists.get(tokens, cursor)
+    match lp.kind
+    case LParen:
+        const param_tok = lists.get(tokens, cursor + 1)
+        match param_tok.kind
+        case Ident(name):
+            const p_name = name
+            const rp = lists.get(tokens, cursor + 2)
+            match rp.kind
+            case RParen:
+                const arrow = lists.get(tokens, cursor + 3)
+                match arrow.kind
+                case FatArrow:
+                    match exprs.parse_primary(tokens, cursor + 4, pool)
+                    case some(out):
+                        const p_list: list[string] = []
+                        lists.push(p_list, p_name)
+                        return some(ClosureOut {
+                            param_names: p_list,
+                            body_expr_id: out.expr_id,
+                            next_cursor: out.next_cursor
+                        })
+                    case none:
+                        return none
+                    end
+                case else:
+                    return none
+                end
+            case else:
+                return none
+            end
+        case else:
+            return none
+        end
+    case else:
+        return none
+    end
+end

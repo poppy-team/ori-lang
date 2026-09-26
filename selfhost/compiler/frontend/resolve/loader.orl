@@ -1,0 +1,26 @@
+module selfhost.compiler.frontend.resolve.loader
+
+import ori.fs as fs
+import selfhost.compiler.frontend.resolve.imports as imp
+
+public alias LoadResult = result[string, string]
+
+public struct LoadedModule
+    module_path: string
+    file_path: string
+    content: string
+end
+
+public load_module_text(module_path: string, base_dir: string) -> LoadResult
+    const file_path = imp.module_to_file_path(base_dir, module_path)
+    match fs.read_text(file_path)
+    case ok(content):
+        return ok(content)
+    case err(e):
+        return err(f"import file {file_path} could not be read: {e}")
+    end
+end
+
+public build_load_order(graph_mod: string) -> string
+    return graph_mod
+end
