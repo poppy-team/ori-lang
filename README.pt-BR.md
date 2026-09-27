@@ -476,7 +476,8 @@ macOS x86_64 e macOS aarch64. Detalhes de staging ficam em
 
 ## Limitações conhecidas
 
-- Ori ainda não é self-hosting (M4 adiado).
+- Ori ainda não é self-hosting. O compilador escrito em Ori é um protótipo
+  experimental fora da `main`; Rust continua como compilador de produto até a 1.0.
 - `ori compile` (AOT) precisa do linker do SO; `ori run` usa JIT por padrão.
 - Compilar Ori a partir do fonte exige Rust; package **Linux** de release não.
 - A emissão de código C foi removida; a execução usa o backend nativo.
@@ -494,8 +495,10 @@ macOS x86_64 e macOS aarch64. Detalhes de staging ficam em
 **Já entregue nos critérios de 1.0:** stdlib pais (M2), ABI `ori-native-abi-1`
 (M3), caminho sem Rust no instalador Linux (M1).
 
-**Depois (shelved):** multi-OS packages, publish em lojas, demos externos,
-self-host (M4 por último).
+**Depois:** packages multi-OS, publicação em lojas e demos externos continuam
+adiados. O self-hosting é experimental e será reavaliado após a versão 1.0
+baseada em Rust, sem bloquear esse lançamento
+([ADR-0006](docs/decisions/adr/0006-rust-reference-through-1-0.md)).
 
 ## Licença
 
