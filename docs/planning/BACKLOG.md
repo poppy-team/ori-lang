@@ -9,6 +9,9 @@
 > C-backend delivery evidence below is historical: source emission and its
 > generated-C tests were retired on 2026-09-05 under ADR-0005. These rows do not
 > define current commands or CI requirements; see [Spec 14](../spec/14-backend-support.md).
+> **Decision 2026-09-27:** [ADR-0006](../decisions/adr/0006-rust-reference-through-1-0.md)
+> keeps the Rust compiler on `main` through 1.0. The Ori-written compiler
+> remains an off-main experiment, not a release blocker.
 
 ---
 
@@ -29,7 +32,9 @@
 3. Package/CI reliability (Linux tar.gz + deb already shipped)  
 4. Local DX (VS Code / Zed — **no** store publish)
 
-**Do not prioritize unless reopened:** multi-OS DIST, ECO demos, M4 self-host.
+**Do not prioritize for the Rust-based 1.0 release:** multi-OS DIST, ECO demos,
+M4 self-host. Preserve the experimental branch and review independent Rust
+fixes as focused PRs; reassess M4 after 1.0 under ADR-0006.
 The production package ecosystem was explicitly reopened on 2026-08-09, but
 remains ordered after the language/runtime foundations; this is not approval
 for marketplace marketing or an immediate public service launch.
@@ -264,7 +269,7 @@ only then revisit self-hosting.
 | **RUNTIME-ARC-1** | Native string/ARC lifetime aborts in the full multifile suite | 1 | M | **done** | **2026-07-26:** the managed `optional` wrapper both registered its payload as an ARC edge and released that payload manually in its destructor. The generic ARC cascade then released the same edge again. The wrapper now relies exclusively on the registered edge, matching the single-cascade-owner contract. Runtime, AOT, and JIT regressions cover `path.relative("a/b/c", "a/b")`; S4 passes all 364 `multifile_imports` tests. |
 | **RUST-QUALITY-1** | Restore a warning-free strict Clippy gate | 2 | L | **done** | **2026-09-01:** workspace check, strict Clippy (`--all-targets --all-features`), full `cargo fmt --all -- --check`, and the required `daily_fast.sh` stages are green. |
 | **PROJ-LINUX-1** | Medium real-world Linux project | 2 | L | **done** | 5 — `examples/linux_log_report` exercises multi-module loading, filesystem results, CLI arguments, native run, and a standalone test module on Linux |
-| **M4** | Self-hosting | 4 | XL | deferred | 6 — only after the previous rows and a stable stdlib/ABI window |
+| **M4** | Self-hosting | 4 | XL | experimental off-main; deferred for 1.0 | 6 — reassess after Rust-based 1.0 using bootstrap, conformance, ABI and maintenance evidence (ADR-0006) |
 
 **Audit checkpoint (2026-07-26):** the normative grammar now matches the
 implemented S3 spellings for selective-import aliases (`=`) and result
@@ -509,7 +514,7 @@ Do **not** pull these into “what’s next” until the user re-opens them:
 |----|------|-------|
 | DIST-1…4 | Multi-OS packages (Win/macOS), smoke matrix | **CI multi-OS packaging** in `release.yml` + smoke-no-rust Win/mac (2026-07-14); publish on `v*` tags |
 | ECO-1 / ECO-2 | External demos / community extras | **Out of scope** for this repository |
-| M4 | Self-hosting | **Deferred 2026-07-26:** revisit only after compiler/runtime modularization, stable stdlib/ABI contracts, reproducible bootstrap and a no-breaking-change window; not required for user utility |
+| M4 | Self-hosting | **Decision updated 2026-09-27:** experimental branch preserved; Rust is the only product compiler through 1.0. Reassess after that release with bootstrap, stage-built conformance, ABI and maintenance evidence (ADR-0006). Not required for user utility or the 1.0 release. |
 
 ### Cancelled this wave
 

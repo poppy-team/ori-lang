@@ -537,7 +537,8 @@ macOS x86_64, and macOS aarch64. Runtime staging details live in
 
 Current pre-1.0 limitations:
 
-- Ori is not self-hosting (M4 deferred; language work comes first).
+- Ori is not self-hosting. The Ori-written compiler is an experimental
+  prototype outside `main`; Rust remains the product compiler through 1.0.
 - `ori compile` is AOT and requires the platform linker (Visual Studio Build
   Tools on Windows, `build-essential` on Linux, Xcode Command Line Tools on
   macOS). `ori run` uses JIT by default and needs no linker.
@@ -562,8 +563,9 @@ block real programs. See BACKLOG.
 **Already landed for 1.0 criteria:** stdlib parents (M2), ABI `ori-native-abi-1`
 (M3), installer path without Rust toolchain (M1) on the Linux package story.
 
-**Later (shelved until language is solid):** multi-OS packages, store publish,
-external demos, self-host (M4 last).
+**Later:** multi-OS packages, store publish, and external demos remain shelved.
+Self-hosting is experimental and will be reassessed after the Rust-based 1.0
+release, not used as a 1.0 gate ([ADR-0006](docs/decisions/adr/0006-rust-reference-through-1-0.md)).
 
 ## License
 

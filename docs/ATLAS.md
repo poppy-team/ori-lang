@@ -19,6 +19,7 @@ update.
 | Latest released baseline | `v0.3.8` |
 | Native ABI | `ori-native-abi-1` |
 | Execution | Native AOT; `ori run` may use the staged Cranelift JIT |
+| Compiler implementation through 1.0 | Rust on `main`; Ori-written self-host prototype remains experimental ([ADR-0006](decisions/adr/0006-rust-reference-through-1-0.md)) |
 | Normative source | [`spec/`](spec/README.md) |
 | User guide | [`language/`](language/tour.md) and [`guides/`](guides/README.md) |
 | Open implementation list | [`planning/BACKLOG.md`](planning/BACKLOG.md) |

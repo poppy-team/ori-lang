@@ -479,9 +479,16 @@ canonical_documents:
   - id: decision.retire-c-backend
     path: docs/decisions/adr/0005-deprecate-and-retire-c-backend.md
     domain: decisions
-    status: proposed
+    status: accepted
     audience: [contributor, maintainer, agent]
     owns: [decision-retire-c-backend, pipeline-reference-rust-native, self-host-target]
+
+  - id: decision.rust-reference-through-1-0
+    path: docs/decisions/adr/0006-rust-reference-through-1-0.md
+    domain: decisions
+    status: accepted
+    audience: [contributor, maintainer, agent]
+    owns: [decision-rust-product-compiler-through-1-0, self-host-experimental-status]
 
   - id: plans.index
     path: docs/plans/README.md

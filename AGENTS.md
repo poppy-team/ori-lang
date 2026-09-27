@@ -42,6 +42,9 @@ When implementation contradicts a higher contract, classify the conflict instead
 - New diagnostics require catalog entries and negative tests.
 - Runtime/stdlib changes keep semantic signatures, ABI metadata, exported symbols, docs, LSP, and tests synchronized.
 - The native backend is the semantic reference.
+- The Rust compiler on `main` remains the product implementation through Ori
+  1.0; self-hosting is experimental outside `main` under ADR-0006 and does not
+  gate the 1.0 release.
 - Unsupported native behavior must reject explicitly according to the support matrix.
 - AOT and JIT must agree on their shared support surface.
 - Do not weaken a quality gate to make a change pass without an explicit recorded decision.

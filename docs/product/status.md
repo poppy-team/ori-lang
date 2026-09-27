@@ -12,6 +12,7 @@ This document is the canonical human-readable status page. Historical release nu
 | Area | Status |
 |---|---|
 | Compiler | Rust workspace under `compiler/` |
+| Ori-written compiler | Experimental prototype outside `main`; not a 1.0 release gate |
 | Frontend | Lexer, parser, name resolution, type checking, diagnostics |
 | Intermediate representation | Typed HIR with optimization passes |
 | Native compilation | Cranelift AOT |
@@ -50,6 +51,23 @@ The project should prioritize, in order:
 8. carefully justified additive language work.
 
 Self-hosting remains a long-term maturity topic, not a prerequisite for the language to be useful.
+
+## Compiler implementation through 1.0
+
+The Rust compiler on `main` is the only product compiler and the semantic
+reference through Ori 1.0. Work toward 1.0 prioritizes correctness, native
+AOT/JIT conformance, runtime and ABI safety, diagnostics, packages, developer
+tools, and measured performance. Building the compiler from source continues
+to require Rust. Installed release packages retain their documented Rust-free
+end-user routes.
+
+The Ori-written self-host compiler is preserved as an **experimental branch**.
+Its Stage 1 does not yet produce Stage 2; it is not merged into `main`, required
+for a 1.0 release, or a supported alternative CLI. Independent Rust fixes
+from the experiment may be proposed as focused, tested PRs. After the
+Rust-based 1.0 release, reassess self-hosting against bootstrap, stage-built
+conformance, ABI/target coverage, maintenance cost, and performance evidence
+before any product promotion. See [ADR-0006](../decisions/adr/0006-rust-reference-through-1-0.md).
 
 ## Known structural work
 
