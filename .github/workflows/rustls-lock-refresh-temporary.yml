@@ -1,0 +1,26 @@
+name: rustls-lock-refresh-temporary
+
+on:
+  pull_request:
+    paths:
+      - compiler/Cargo.lock
+      - compiler/crates/ori-runtime/Cargo.toml
+      - .github/workflows/rustls-lock-refresh-temporary.yml
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+      - name: Regenerate lockfile
+        working-directory: compiler
+        run: cargo update -p rustls --precise 0.23.45
+      - name: Upload regenerated lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rustls-generated-lockfile
+          path: compiler/Cargo.lock
