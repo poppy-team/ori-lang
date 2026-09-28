@@ -1498,8 +1498,8 @@ fn find_stdlib_source_module(import: &str) -> Option<PathBuf> {
 /// 2. End-user / local package next to the binary:
 ///    - `<exe_dir>/stdlib` (flat package)
 ///    - `<exe_dir>/../stdlib` (`…/bin/ori` + `…/stdlib`, e.g. `~/.local/share/ori`)
-/// 3. Dev layout from `CARGO_MANIFEST_DIR` (only when still present; never preferred
-///    over a package layout next to the running binary)
+/// 3. Dev layout from the remapped driver manifest or a discovered workspace
+///    (only when present; never preferred over a package layout next to the binary)
 /// 4. Walk cwd parents for a `stdlib/` directory
 pub fn find_stdlib_root() -> Option<PathBuf> {
     let dir_if_stdlib = |path: PathBuf| -> Option<PathBuf> {
@@ -1533,7 +1533,7 @@ pub fn find_stdlib_root() -> Option<PathBuf> {
     };
 
     // Always prefer a real install next to the running binary over the
-    // compile-time worktree path baked into `CARGO_MANIFEST_DIR`.
+    // source workspace used during compilation or discovered at runtime.
     if let Some(path) = package_near_exe() {
         return Some(path);
     }
@@ -1546,8 +1546,7 @@ pub fn find_stdlib_root() -> Option<PathBuf> {
         return None;
     }
 
-    let manifest_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dev_candidate = manifest_root.join("../../../stdlib");
+    let dev_candidate = super::runtime::repo_root().join("stdlib");
     if let Some(root) = dir_if_stdlib(dev_candidate) {
         return Some(root);
     }

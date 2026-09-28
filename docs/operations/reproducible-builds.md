@@ -57,6 +57,24 @@ Review:
 
 Each source should be eliminated, normalized, or documented as a remaining variance.
 
+For `ori-driver`, a Cargo build script applies the last matching
+`--remap-path-prefix` from `CARGO_ENCODED_RUSTFLAGS` to the manifest path
+embedded in the driver. This keeps a remapped release binary from recording
+the original checkout directory through its development runtime and stdlib
+lookup. For example, from the repository root:
+
+```sh
+RUSTFLAGS="--remap-path-prefix=$PWD=/ori-source" \
+  cargo --manifest-path compiler/Cargo.toml build -p ori-driver --release --locked
+```
+
+The remapped path is used directly only while it resolves to a real driver
+manifest. Otherwise, development lookup searches near the executable and
+then the current directory. Packaged runtime and stdlib beside the executable
+take precedence, and `ORI_REQUIRE_PACKAGED_RUNTIME=1` prevents fallback to
+source-tree assets. This change alone does not establish bit-for-bit
+reproducibility for the whole release matrix.
+
 ## Build environment
 
 Use a documented clean environment with:
