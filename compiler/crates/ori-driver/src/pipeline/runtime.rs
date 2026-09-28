@@ -590,21 +590,47 @@ fn cargo_target_dir() -> PathBuf {
 /// The Cargo workspace holding this crate (`<repo>/compiler`): where the
 /// fallback `cargo build -p ori-runtime` must run and where `target/` lives.
 pub(super) fn cargo_workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")))
-        .to_path_buf()
+    let manifest = Path::new(env!("ORI_DRIVER_MANIFEST_DIR"));
+    if manifest.is_absolute() && manifest.join("Cargo.toml").is_file() {
+        return manifest
+            .ancestors()
+            .nth(2)
+            .unwrap_or(manifest)
+            .to_path_buf();
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| development_workspace_from(&exe))
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|cwd| development_workspace_from(&cwd))
+        })
+        .unwrap_or_else(|| {
+            manifest
+                .ancestors()
+                .nth(2)
+                .unwrap_or(manifest)
+                .to_path_buf()
+        })
+}
+
+fn development_workspace_from(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        [ancestor.to_path_buf(), ancestor.join("compiler")]
+            .into_iter()
+            .find(|candidate| {
+                candidate.join("Cargo.toml").is_file()
+                    && candidate.join("crates/ori-driver/Cargo.toml").is_file()
+            })
+    })
 }
 
 /// The repository root (one level above the Cargo workspace): where
 /// `tools/stage_native_runtime.sh` stages `runtime/<target>/` artifacts.
 pub(super) fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")))
-        .to_path_buf()
+    let workspace = cargo_workspace_root();
+    workspace.parent().unwrap_or(&workspace).to_path_buf()
 }
 
 fn build_native_runtime_with_cargo() -> Result<(), String> {
@@ -684,6 +710,38 @@ pub(super) fn native_static_libs_for_target(target: &str) -> &'static [&'static 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn development_root_follows_relocated_target_layouts() {
+        let root = std::env::temp_dir().join(format!("ori_dev_roots_{}", std::process::id()));
+        let workspace = root.join("compiler");
+        std::fs::create_dir_all(workspace.join("crates/ori-driver")).unwrap();
+        std::fs::write(workspace.join("Cargo.toml"), "[workspace]\n").unwrap();
+        std::fs::write(
+            workspace.join("crates/ori-driver/Cargo.toml"),
+            "[package]\n",
+        )
+        .unwrap();
+        for layout in [
+            "target/debug/ori",
+            "target/release/ori",
+            "target/x86_64-unknown-linux-gnu/release/ori",
+            "target/debug/deps/test",
+        ] {
+            assert_eq!(
+                development_workspace_from(&workspace.join(layout)),
+                Some(workspace.clone())
+            );
+        }
+        for path in [&root, &root.join("examples/hello"), &workspace] {
+            assert_eq!(development_workspace_from(path), Some(workspace.clone()));
+        }
+        assert_eq!(
+            development_workspace_from(&root.with_extension("unrelated").join("bin/ori")),
+            None
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn default_native_target_uses_the_compiled_architecture() {

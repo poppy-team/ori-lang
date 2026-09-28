@@ -75,6 +75,11 @@ jobs:
         if: matrix.name == 'linux-gnu'
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+      - name: Test remapped driver paths
+        run: |
+          cargo test -p ori-driver --test build_paths --locked
+          cargo test -p ori-driver --lib development_root_follows_relocated_target_layouts --locked
+
       - name: Test runtime
         run: cargo test -p ori-runtime --locked -- --test-threads=1
 
